@@ -1,0 +1,5 @@
+# Visual Studio Code
+.vscode/
+*.vc.db
+*.sln
+*.suo
