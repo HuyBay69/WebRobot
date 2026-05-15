@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ROS2 Navigation WebUI</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
+</head>
+<body>
+
+  <header class="header">
+    <div class="header-brand">
+      <span class="brand-name">ROS2 Navigation WebUI</span>
+    </div>
+    <div class="header-conn">
+      <div class="conn-input-wrap">
+        <span class="conn-prefix">ws://</span>
+        <input class="conn-input" id="wsHost" type="text" value="localhost:9090" spellcheck="false" />
+      </div>
+      <button class="btn-connect" id="btnConnect">Connect ROS</button>
+      <span class="conn-dot" id="connDot"></span>
+      <span class="conn-status" id="connStatus">Disconnected</span>
+    </div>
+  </header>
+
+  <div class="workspace">
+
+    <!-- Map panel -->
+    <div class="map-panel">
+      <div class="map-toolbar">
+        <div class="map-title-wrap">
+          <span class="map-title" id="mapTitle">No map loaded</span>
+        </div>
+        <button class="btn-upload" id="btnUploadWaypoint">Upload Waypoints</button>
+        <button class="btn-upload" id="btnUpload">Upload Map</button>
+        <button class="btn-upload" id="btnSaveAlignment" disabled>Save Alignment</button>
+        <input type="file" id="mapFileInput" accept="image/*" style="display:none" />
+        <input type="file" id="waypointFileInput" accept=".json" style="display:none" />
+      </div>
+      <div class="map-view">
+        <div class="map-hud" id="mapHud" style="display:none">
+          <span id="mapHint">Upload waypoints first, then add the map image.</span>
+          <span id="mapScaleLabel"></span>
+        </div>
+        <div class="map-canvas-wrap" id="mapCanvasWrap">
+          <img id="mapImg" src="" alt="Map" style="display:none" />
+          <canvas id="overlayCanvas" style="display:none"></canvas>
+          <div class="map-placeholder" id="mapPlaceholder">
+            <p>Upload waypoint JSON first, then add a map image.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Control panel -->
+    <div class="ctrl-panel">
+
+      <section class="card">
+        <h3 class="section-title">GOAL COORDINATES</h3>
+        <div class="field-group">
+          <div class="field">
+            <label class="field-label">X <span class="unit">(m)</span></label>
+            <input class="field-input" id="goalX" type="number" step="any" placeholder="0.000" />
+          </div>
+          <div class="field">
+            <label class="field-label">Y <span class="unit">(m)</span></label>
+            <input class="field-input" id="goalY" type="number" step="any" placeholder="0.000" />
+          </div>
+        </div>
+        <div class="last-sent" id="lastGoal"></div>
+        <button class="btn-action" id="btnSendGoal">Send Goal</button>
+        <div class="feedback" id="goalFeedback"></div>
+      </section>
+
+      <section class="card">
+        <h3 class="section-title">TARGET SPEED</h3>
+        <div class="speed-row">
+          <div class="field" style="flex:1">
+            <label class="field-label">Speed <span class="unit">(km/h)</span></label>
+            <input class="field-input" id="speedKmh" type="number" min="0" step="any" placeholder="0.0" />
+          </div>
+          <div class="mps-badge" id="speedMps">— m/s</div>
+        </div>
+        <div class="last-sent" id="lastSpeed"></div>
+        <div class="btn-pair">
+          <button class="btn-action" id="btnSendSpeed">Send Speed</button>
+          <button class="btn-estop" id="btnStop">EMERGENCY STOP</button>
+        </div>
+        <div class="feedback" id="speedFeedback"></div>
+      </section>
+
+      <section class="card card-log">
+        <h3 class="section-title">ACTIVITY LOG</h3>
+        <div class="log-body" id="logBody">
+          <div class="log-empty">No activity yet.</div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- Upload Modal -->
+  <div class="modal-overlay" id="uploadModal" style="display:none">
+    <div class="modal">
+      <h3 class="modal-title">Upload Map</h3>
+      <div class="drop-zone" id="dropZone">
+        <p>Drag &amp; drop an image here, or <label for="mapFileInput" class="link">browse</label></p>
+        <span class="drop-hint" id="dropHint"></span>
+      </div>
+      <div class="modal-field">
+        <label class="field-label">Map Name</label>
+        <input class="field-input" id="mapNameInput" type="text" placeholder="e.g. BKHN Campus" />
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" id="btnModalCancel">Cancel</button>
+        <button class="btn-action" id="btnModalUpload" disabled>Upload</button>
+      </div>
+      <div class="feedback" id="uploadFeedback"></div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

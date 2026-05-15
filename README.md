@@ -1,8 +1,5 @@
-# Robot
+python3 ~/WebRobot/web/app.py
 
-## Setup
-```
-   cd web
-   pip install -r requirements
-   python3 app.py
-```
+http://localhost:5000
+
+
