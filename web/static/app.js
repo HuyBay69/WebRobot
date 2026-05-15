@@ -64,8 +64,10 @@ let mapDrag = { active: false, startX: 0, startY: 0, origX: 0, origY: 0 };
 let mapBaseBounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
 let mapBaseFit = { width: 0, height: 0 };
 
-const MIN_ZOOM = 0.2;
-const MAX_ZOOM = 4;
+const MIN_ZOOM_STATIC = 0.1;  // 10%
+const MAX_ZOOM_STATIC = 2.0;  // 200%
+let MIN_ZOOM = 0.1;
+let MAX_ZOOM = 2.0;
 
 // ── Logging ───────────────────────────────────────────────────────────────────
 function addLog(level, msg) {
@@ -110,12 +112,54 @@ function updateMapHud() {
   }
   mapHint.textContent = hintParts.join(' · ');
   const currentScale = imageTransform.scale;
-  mapScaleLabel.textContent = `zoom ${(currentScale * 100).toFixed(0)}%`;
+  const rect = mapCanvasWrap.getBoundingClientRect();
+  mapScaleLabel.textContent = `zoom ${(currentScale * 100).toFixed(0)}% | viewport ${Math.round(rect.width)}×${Math.round(rect.height)}px`;
 }
 
 function setMapTransform() {
   if (mapImg.style.display !== 'none') {
     mapImg.style.transform = `translate(${imageTransform.x}px, ${imageTransform.y}px) scale(${imageTransform.scale})`;
+  }
+}
+
+function calculateDynamicMinZoom() {
+  const rect = mapCanvasWrap.getBoundingClientRect();
+  if (!rect.width || !rect.height || !mapImageNatural.width || !mapImageNatural.height) {
+    MIN_ZOOM = MIN_ZOOM_STATIC;
+    return;
+  }
+  const minScaleX = rect.width / mapImageNatural.width;
+  const minScaleY = rect.height / mapImageNatural.height;
+  MIN_ZOOM = Math.max(MIN_ZOOM_STATIC, Math.max(minScaleX, minScaleY));
+}
+
+function constrainImageTransform() {
+  const rect = mapCanvasWrap.getBoundingClientRect();
+  if (!rect.width || !rect.height || !mapImageNatural.width || !mapImageNatural.height) return;
+  
+  const scaledWidth = mapImageNatural.width * imageTransform.scale;
+  const scaledHeight = mapImageNatural.height * imageTransform.scale;
+  
+  // Giới hạn để không lộ vùng đen
+  if (scaledWidth <= rect.width) {
+    // Ảnh nhỏ hơn viewport ngang, center nó
+    imageTransform.x = (rect.width - scaledWidth) / 2;
+  } else {
+    // Ảnh lớn hơn, clamp để không kéo ra ngoài
+    imageTransform.x = clamp(imageTransform.x, rect.width - scaledWidth, 0);
+  }
+  
+  if (scaledHeight <= rect.height) {
+    // Ảnh nhỏ hơn viewport dọc, center nó
+    imageTransform.y = (rect.height - scaledHeight) / 2;
+  } else {
+    // Ảnh lớn hơn, clamp để không kéo ra ngoài
+    imageTransform.y = clamp(imageTransform.y, rect.height - scaledHeight, 0);
+  }
+  
+  if (alignmentLocked) {
+    overlayTransform.x = imageTransform.x;
+    overlayTransform.y = imageTransform.y;
   }
 }
 
@@ -208,6 +252,8 @@ function centerView() {
   const rect = mapCanvasWrap.getBoundingClientRect();
   if (!rect.width || !rect.height) return;
 
+  calculateDynamicMinZoom();
+
   if (mapHasWaypoint && mapHasImage && hasValidWaypointMetadata(waypointMetadata)) {
     if (applyMetadataAlignment()) {
       updateMapHud();
@@ -251,6 +297,7 @@ function centerView() {
 function handleMapWheel(event) {
   if (!mapHasWaypoint && !mapHasImage) return;
   event.preventDefault();
+  calculateDynamicMinZoom();
   const delta = event.deltaY < 0 ? 1.04 : 0.96;
   const rect = mapCanvasWrap.getBoundingClientRect();
   const mouseX = event.clientX - rect.left;
@@ -265,6 +312,7 @@ function handleMapWheel(event) {
     overlayTransform.x = mouseX - (mouseX - overlayTransform.x) * scaleRatio;
     overlayTransform.y = mouseY - (mouseY - overlayTransform.y) * scaleRatio;
   }
+  constrainImageTransform();
   setMapTransform();
   updateMapHud();
   drawOverlay();
@@ -296,6 +344,7 @@ function handleMapPointerMove(event) {
     mapDrag.origX = imageTransform.x;
     mapDrag.origY = imageTransform.y;
   }
+  constrainImageTransform();
   setMapTransform();
   drawOverlay();
   updateMapHud();

@@ -1,0 +1,136 @@
+════════════════════════════════════════════════════════════════════════════════
+                    HƯỚNG DẪN KHỚP WAYPOINT VỚI ẢNH
+════════════════════════════════════════════════════════════════════════════════
+
+1. CÁC THÔNG SỐ METADATA CẦN THIẾT
+────────────────────────────────────────────────────────────────────────────────
+Metadata phải được lưu trong JSON waypoint với các trường bắt buộc:
+
+  {
+    "metadata": {
+      "min_x": -27.84,              // Góc trên trái: world_x tối thiểu
+      "min_y": -60.72,              // Góc trên trái: world_y tối thiểu
+      "scale": 10.0,                // Tỷ lệ: 1 mét = 10 pixels
+      "image_width": 4500,          // Chiều rộng ảnh (pixels)
+      "image_height": 4500,         // Chiều cao ảnh (pixels)
+      "pixel_mode": "xy_y_down",    // X tăng phải, Y tăng xuống
+      "center_x": 197.16,           // Tâm thế giới (mét) - chỉ tham khảo
+      "center_y": 164.28,           // Tâm thế giới (mét) - chỉ tham khảo
+      "ortho_width_m": 450.0        // Bề rộng vùng phủ (mét) - chỉ tham khảo
+    },
+    "waypoints": [...]
+  }
+
+
+2. CÁC CÔNG THỨC TÍNH TOÁN
+────────────────────────────────────────────────────────────────────────────────
+
+a) Tính min_x, min_y từ center (để gốc là tâm ảnh):
+   min_x = center_x - (image_width / (2 * scale))
+   min_y = center_y - (image_height / (2 * scale))
+   
+   Ví dụ:
+   min_x = 197.16 - (4500 / (2 * 10)) = 197.16 - 225 = -27.84 ✓
+   min_y = 164.28 - (4500 / (2 * 10)) = 164.28 - 225 = -60.72 ✓
+
+b) Chuyển world coordinates → pixel coordinates:
+   pixel_x = (world_x - min_x) * scale
+   pixel_y = (world_y - min_y) * scale
+   
+   Ví dụ (tâm):
+   pixel_x = (197.16 - (-27.84)) * 10 = 225 * 10 = 2250 ✓
+   pixel_y = (164.28 - (-60.72)) * 10 = 225 * 10 = 2250 ✓
+
+c) Xác nhận bounding box ảnh:
+   max_x = min_x + (image_width / scale)
+   max_y = min_y + (image_height / scale)
+   
+   Ví dụ:
+   max_x = -27.84 + (4500 / 10) = -27.84 + 450 = 422.16 ✓
+   max_y = -60.72 + (4500 / 10) = -60.72 + 450 = 389.28 ✓
+
+
+3. CÁC BƯỚC CHUẨN BỊ DỮ LIỆU
+────────────────────────────────────────────────────────────────────────────────
+
+A) Xuất ảnh bird's-eye view từ CARLA:
+   ✓ Camera position: (center_x, center_y, height_m)
+   ✓ Camera rotation: pitch = -90°, yaw = 0°, roll = 0°
+   ✓ Ảnh size phải = image_width x image_height (ví dụ: 4500x4500)
+   ✓ Pixel (0,0) = corner trên trái world (min_x, min_y)
+   ✓ Pixel (width-1, height-1) = corner dưới phải world (max_x, max_y)
+
+B) Xuất waypoint JSON:
+   ✓ Thu thập world coordinates (x, y) từ CARLA (đơn vị: mét)
+   ✓ Tính pixel_x, pixel_y = (world - min) * scale
+   ✓ Lưu vào JSON với metadata đầy đủ
+   ✓ Kiểm tra: tâm ảnh (2250, 2250) = tâm waypoint (center_x, center_y)
+
+C) Upload lên web:
+   ✓ Upload waypoint JSON trước (nút "Upload Waypoints")
+   ✓ Upload ảnh sau (nút "Upload Map")
+   ✓ Kiểm tra: ảnh và waypoint tự động khớp (nếu metadata đúng)
+
+
+4. CHECKLIST KIỂM TRA
+────────────────────────────────────────────────────────────────────────────────
+
+□ Ảnh actual width = image_width (ví dụ: 4500)
+□ Ảnh actual height = image_height (ví dụ: 4500)
+□ Scale = pixels_per_meter (ví dụ: 10.0)
+□ pixel_mode = "xy_y_down"
+□ min_x = center_x - (image_width / (2 * scale))
+□ min_y = center_y - (image_height / (2 * scale))
+□ Tất cả waypoint dùng công thức: pixel = (world - min) * scale
+□ Metadata đầy đủ: min_x, min_y, scale, image_width, image_height, pixel_mode
+□ Ảnh không bị co/giãn khi upload (scale = 1.0 trong web)
+□ Waypoint overlay không bị transform (1:1 pixel với ảnh)
+
+
+5. THÔNG SỐ HIỆN TẠI (Ví dụ)
+────────────────────────────────────────────────────────────────────────────────
+
+Ảnh:
+  - Size: 4500 x 4500 pixels
+  - Tâm pixel: (2250, 2250)
+  - Tâm world: (197.16, 164.28) mét
+  - Scale: 10 pixels/meter
+  - Bounding box world: (-27.84, -60.72) → (422.16, 389.28) mét
+  - Bounding box ảnh: (0, 0) → (4499, 4499) pixels
+
+Waypoint:
+  - Origin: pixel (2250, 2250) = world (197.16, 164.28)
+  - Công thức: pixel_i = (world_i - min_i) * 10
+
+
+6. NẾU KHỚP KHÔNG ĐƯỢC
+────────────────────────────────────────────────────────────────────────────────
+
+1. Kiểm tra kích thước ảnh thực (crop hay resize?)
+   → Nếu khác metadata, ảnh sẽ không khớp
+
+2. Kiểm tra công thức pixel
+   → Lấy 1 waypoint, tính pixel từ công thức, so với vị trí trên ảnh
+
+3. Kiểm tra origin
+   → Tâm pixel ảnh (width/2, height/2) có = tâm world (center_x, center_y)?
+
+4. Kiểm tra scale
+   → Nếu thay đổi scale, phải recalculate tất cả pixel coords
+
+5. Kiểm tra pixel_mode
+   → Nếu Y tăng lên (không phải xuống), ảnh sẽ bị flip
+
+
+7. ĐIỀU CHỈNH SCALE NẾU CẦN
+────────────────────────────────────────────────────────────────────────────────
+
+Nếu muốn thay đổi scale (ví dụ từ 10 → 20 pixels/meter):
+
+  Bước 1: Chọn scale mới (ví dụ: 20)
+  Bước 2: Tính image_width/height mới = ortho_width_m * scale_new
+          → Chụp lại ảnh với FOV khác hoặc camera zoom
+  Bước 3: Recalculate min_x, min_y với scale mới
+  Bước 4: Recalculate tất cả pixel_x, pixel_y = (world - min) * scale_new
+
+════════════════════════════════════════════════════════════════════════════════
