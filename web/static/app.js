@@ -12,6 +12,7 @@ const btnUpload      = document.getElementById('btnUpload');
 const mapFileInput   = document.getElementById('mapFileInput');
 const mapPlaceholder = document.getElementById('mapPlaceholder');
 const mapImg         = document.getElementById('mapImg');
+const selectedWaypointPin = document.getElementById('selectedWaypointPin');
 
 const uploadModal    = document.getElementById('uploadModal');
 const dropZone       = document.getElementById('dropZone');
@@ -63,6 +64,7 @@ let alignmentLocked = false;
 let mapDrag = { active: false, startX: 0, startY: 0, origX: 0, origY: 0 };
 let mapBaseBounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
 let mapBaseFit = { width: 0, height: 0 };
+let selectedWaypoint = null;
 
 const MIN_ZOOM_STATIC = 0.1;  // 10%
 const MAX_ZOOM_STATIC = 2.0;  // 200%
@@ -95,7 +97,7 @@ function escHtml(s) {
 function setFeedback(el, msg, ok) {
   el.textContent = msg;
   el.className = 'feedback ' + (ok ? 'ok' : 'err');
-  if (ok) setTimeout(() => { el.textContent = ''; el.className = 'feedback'; }, 3000);
+  if (ok) setTimeout(() => { el.textContent = ''; el.className = 'feedback'; }, 5000);
 }
 
 function updateMapHud() {
@@ -225,6 +227,21 @@ function updateCanvasSize() {
   const ctx = overlayCanvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   drawOverlay();
+  updateSelectedPin();
+}
+
+function updateSelectedPin() {
+  if (!selectedWaypoint || !mapHasImage) {
+    selectedWaypointPin.style.display = 'none';
+    return;
+  }
+
+  const x = selectedWaypoint.pixel_x * overlayTransform.scale + overlayTransform.x;
+  const y = selectedWaypoint.pixel_y * overlayTransform.scale + overlayTransform.y;
+
+  selectedWaypointPin.style.left = `${x}px`;
+  selectedWaypointPin.style.top = `${y}px`;
+  selectedWaypointPin.style.display = 'block';
 }
 
 function drawOverlay() {
@@ -233,15 +250,16 @@ function drawOverlay() {
   ctx.clearRect(0, 0, rect.width, rect.height);
   if (!waypoints.length) return;
   ctx.save();
-  ctx.translate(overlayTransform.x, overlayTransform.y);
-  ctx.scale(overlayTransform.scale, overlayTransform.scale);
   ctx.strokeStyle = 'rgba(0, 200, 150, 0.95)';
   ctx.fillStyle = 'rgba(0, 200, 150, 0.95)';
-  ctx.lineWidth = 2 / Math.max(overlayTransform.scale, 0.2);
+  ctx.lineWidth = 2;
   waypoints.forEach(wp => {
     if (typeof wp.pixel_x !== 'number' || typeof wp.pixel_y !== 'number') return;
+    const x = wp.pixel_x * overlayTransform.scale + overlayTransform.x;
+    const y = wp.pixel_y * overlayTransform.scale + overlayTransform.y;
+    const radius = Math.max(1, 3 * overlayTransform.scale);
     ctx.beginPath();
-    ctx.arc(wp.pixel_x, wp.pixel_y, 3 / Math.max(overlayTransform.scale, 0.2), 0, Math.PI * 2);
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
   });
@@ -316,6 +334,7 @@ function handleMapWheel(event) {
   setMapTransform();
   updateMapHud();
   drawOverlay();
+  updateSelectedPin();
 }
 
 function handleMapPointerDown(event) {
@@ -347,6 +366,7 @@ function handleMapPointerMove(event) {
   constrainImageTransform();
   setMapTransform();
   drawOverlay();
+  updateSelectedPin();
   updateMapHud();
 }
 
@@ -400,6 +420,7 @@ function loadWaypointFile(file) {
       updateMapHud();
       overlayCanvas.style.display = 'block';
       mapPlaceholder.style.display = 'none';
+      selectedWaypoint = null;
       btnSaveAlignment.disabled = !mapHasImage;
       addLog('info', `Waypoints loaded: ${waypoints.length} points.`);
       if (mapHasImage && hasValidWaypointMetadata(waypointMetadata)) {
@@ -407,6 +428,7 @@ function loadWaypointFile(file) {
       } else if (!mapHasImage) {
         centerView();
       }
+      updateSelectedPin();
     } catch (err) {
       setFeedback(uploadFeedback, 'Không thể đọc file waypoint JSON.', false);
       addLog('error', `Waypoint load error: ${err}`);
@@ -421,6 +443,8 @@ function handleWaypointClick(event) {
   const clickY = event.clientY - rect.top;
   const hit = findWaypointAt(clickX, clickY);
   if (!hit) return;
+  selectedWaypoint = hit;
+  updateSelectedPin();
   if (typeof hit.x === 'number' && typeof hit.y === 'number') {
     goalX.value = hit.x.toFixed(3);
     goalY.value = hit.y.toFixed(3);
@@ -504,6 +528,7 @@ mapImg.addEventListener('load', () => {
   mapHasImage = true;
   mapPlaceholder.style.display = 'none';
   mapImg.style.display = 'block';
+  updateCanvasSize();
   if (mapHasWaypoint && hasValidWaypointMetadata(waypointMetadata)) {
     centerView();
   } else if (!alignmentLocked) {
@@ -511,6 +536,7 @@ mapImg.addEventListener('load', () => {
   }
   btnSaveAlignment.disabled = !mapHasWaypoint;
   updateMapHud();
+  updateSelectedPin();
 });
 
 btnUploadWaypoint.addEventListener('click', () => waypointFileInput.click());
@@ -527,6 +553,7 @@ mapCanvasWrap.addEventListener('click', handleWaypointClick);
 window.addEventListener('mousemove', handleMapPointerMove);
 window.addEventListener('mouseup', handleMapPointerUp);
 window.addEventListener('resize', updateCanvasSize);
+window.addEventListener('load', updateCanvasSize);
 btnSaveAlignment.addEventListener('click', saveAlignment);
 updateCanvasSize();
 

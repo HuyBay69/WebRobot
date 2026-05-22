@@ -242,6 +242,18 @@ html, body {
   pointer-events: none;
 }
 
+.waypoint-pin {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 28px;
+  height: auto;
+  transform: translate(-50%, -100%);
+  pointer-events: none;
+  display: none;
+  z-index: 12;
+}
+
 .map-placeholder {
   position: absolute;
   inset: 0;
