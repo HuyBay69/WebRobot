@@ -26,16 +26,15 @@ const goalX          = document.getElementById('goalX');
 const goalY          = document.getElementById('goalY');
 const btnSendGoal    = document.getElementById('btnSendGoal');
 const goalFeedback   = document.getElementById('goalFeedback');
-const lastGoalEl     = document.getElementById('lastGoal');
 
 const speedKmh       = document.getElementById('speedKmh');
 const speedMpsEl     = document.getElementById('speedMps');
 const btnSendSpeed   = document.getElementById('btnSendSpeed');
 const btnStop        = document.getElementById('btnStop');
 const speedFeedback  = document.getElementById('speedFeedback');
-const lastSpeedEl    = document.getElementById('lastSpeed');
 
 const logBody        = document.getElementById('logBody');
+const locationNameError = document.getElementById('locationNameError');
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let ros       = null;
@@ -50,7 +49,6 @@ let overlayCanvas = document.getElementById('overlayCanvas');
 let mapHud = document.getElementById('mapHud');
 let mapHint = document.getElementById('mapHint');
 let mapScaleLabel = document.getElementById('mapScaleLabel');
-let btnSaveAlignment = document.getElementById('btnSaveAlignment');
 
 let waypoints = [];
 let waypointMetadata = null;
@@ -142,20 +140,15 @@ function constrainImageTransform() {
   const scaledWidth = mapImageNatural.width * imageTransform.scale;
   const scaledHeight = mapImageNatural.height * imageTransform.scale;
   
-  // Giới hạn để không lộ vùng đen
   if (scaledWidth <= rect.width) {
-    // Ảnh nhỏ hơn viewport ngang, center nó
     imageTransform.x = (rect.width - scaledWidth) / 2;
   } else {
-    // Ảnh lớn hơn, clamp để không kéo ra ngoài
     imageTransform.x = clamp(imageTransform.x, rect.width - scaledWidth, 0);
   }
   
   if (scaledHeight <= rect.height) {
-    // Ảnh nhỏ hơn viewport dọc, center nó
     imageTransform.y = (rect.height - scaledHeight) / 2;
   } else {
-    // Ảnh lớn hơn, clamp để không kéo ra ngoài
     imageTransform.y = clamp(imageTransform.y, rect.height - scaledHeight, 0);
   }
   
@@ -197,8 +190,6 @@ function applyMetadataAlignment() {
   mapHasWaypoint = true;
   mapHasImage = true;
   alignmentLocked = true;
-  btnSaveAlignment.textContent = 'Alignment Locked';
-  btnSaveAlignment.disabled = true;
   addLog('info', 'Auto-aligned image and waypoint bằng metadata (1:1 pixel).');
   return true;
 }
@@ -392,15 +383,6 @@ function findWaypointAt(x, y) {
   return best;
 }
 
-function saveAlignment() {
-  alignmentLocked = true;
-  btnSaveAlignment.textContent = 'Alignment Locked';
-  btnSaveAlignment.disabled = true;
-  setMapTransform();
-  drawOverlay();
-  addLog('info', 'Alignment locked. Waypoint và ảnh giờ đồng bộ.');
-}
-
 function loadWaypointFile(file) {
   const reader = new FileReader();
   reader.onload = () => {
@@ -421,7 +403,6 @@ function loadWaypointFile(file) {
       overlayCanvas.style.display = 'block';
       mapPlaceholder.style.display = 'none';
       selectedWaypoint = null;
-      btnSaveAlignment.disabled = !mapHasImage;
       addLog('info', `Waypoints loaded: ${waypoints.length} points.`);
       if (mapHasImage && hasValidWaypointMetadata(waypointMetadata)) {
         centerView();
@@ -448,7 +429,10 @@ function handleWaypointClick(event) {
   if (typeof hit.x === 'number' && typeof hit.y === 'number') {
     goalX.value = hit.x.toFixed(3);
     goalY.value = hit.y.toFixed(3);
-    setFeedback(goalFeedback, 'Waypoint selected. Nhấn Send Goal để gửi.', true);
+    
+    goalFeedback.textContent = 'Chọn vị trí thành công. Nhấn Send Goal để gửi.';
+    goalFeedback.className = 'feedback ok';
+    
     addLog('info', `Waypoint selected → x=${hit.x.toFixed(3)}, y=${hit.y.toFixed(3)}`);
   }
 }
@@ -474,7 +458,6 @@ function setConnectedUI(state) {
     btnConnect.classList.remove('connected');
     btnConnect.disabled = false;
   }
-  // Buttons always enabled — gửi qua API khi không có ROS WebSocket
 }
 
 function connectROS() {
@@ -534,7 +517,6 @@ mapImg.addEventListener('load', () => {
   } else if (!alignmentLocked) {
     centerView();
   }
-  btnSaveAlignment.disabled = !mapHasWaypoint;
   updateMapHud();
   updateSelectedPin();
 });
@@ -554,7 +536,6 @@ window.addEventListener('mousemove', handleMapPointerMove);
 window.addEventListener('mouseup', handleMapPointerUp);
 window.addEventListener('resize', updateCanvasSize);
 window.addEventListener('load', updateCanvasSize);
-btnSaveAlignment.addEventListener('click', saveAlignment);
 updateCanvasSize();
 
 // ── Upload bản đồ ─────────────────────────────────────────────────────────────
@@ -617,7 +598,6 @@ btnModalUpload.addEventListener('click', async () => {
       mapImg.style.display = 'block';
       mapPlaceholder.style.display = 'none';
       mapHasImage = true;
-      btnSaveAlignment.disabled = !mapHasWaypoint;
       addLog('info', `Map uploaded: ${data.map_name}`);
       closeModal();
     } else {
@@ -642,25 +622,31 @@ async function sendGoal() {
   const y = parseFloat(goalY.value);
 
   if (isNaN(x) || isNaN(y)) {
-    setFeedback(goalFeedback, 'X và Y phải là số hợp lệ.', false);
+    goalFeedback.textContent = 'X và Y phải là số hợp lệ.';
+    goalFeedback.className = 'feedback err';
     return;
   }
 
-  const ts = new Date().toLocaleTimeString('en-GB', { hour12: false });
-
-  // Ưu tiên ROS WebSocket nếu đang kết nối
   if (connected && goalPub) {
     goalPub.publish(new ROSLIB.Message({
       header: { frame_id: 'map' },
       pose: { position: { x, y, z: 0.0 }, orientation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 } },
     }));
-    lastGoalEl.innerHTML = `Sent at ${ts}: <b>x=${x.toFixed(3)}, y=${y.toFixed(3)}</b>`;
-    setFeedback(goalFeedback, '✓ Published to /goal_pose (ROS)', true);
+    
+    goalFeedback.textContent = `Đã gửi tọa độ (${x.toFixed(3)},${y.toFixed(3)}) thành công.`;
+    goalFeedback.className = 'feedback ok';
+    
+    setTimeout(() => {
+      if (goalFeedback.className === 'feedback ok') {
+        goalFeedback.textContent = 'Chọn một vị trí trên bản đồ';
+        goalFeedback.className = 'feedback';
+      }
+    }, 5000);
+
     addLog('info', `Goal [ROS] → x=${x.toFixed(3)}, y=${y.toFixed(3)}`);
     return;
   }
 
-  // Fallback: gửi qua Flask API
   btnSendGoal.disabled = true;
   try {
     const res  = await fetch('/api/send-goal', {
@@ -673,15 +659,26 @@ async function sendGoal() {
       let detail = `x=${x.toFixed(3)}, y=${y.toFixed(3)}`;
       if (data.snapped) detail += ` → waypoint (${data.wx.toFixed(3)}, ${data.wy.toFixed(3)}), dist=${data.dist} m`;
       const via = data.ros ? ' → ROS' : ' (no ROS)';
-      lastGoalEl.innerHTML = `Sent at ${ts}: <b>x=${x.toFixed(3)}, y=${y.toFixed(3)}</b>`;
-      setFeedback(goalFeedback, `✓ Sent via server${via}`, true);
+      
+      goalFeedback.textContent = `Đã gửi tọa độ (${x.toFixed(3)},${y.toFixed(3)}) thành công.`;
+      goalFeedback.className = 'feedback ok';
+      
+      setTimeout(() => {
+        if (goalFeedback.className === 'feedback ok') {
+          goalFeedback.textContent = 'Chọn một vị trí trên bản đồ';
+          goalFeedback.className = 'feedback';
+        }
+      }, 5000);
+
       addLog('info', `Goal [API${via}] → ${detail}`);
     } else {
-      setFeedback(goalFeedback, data.error || 'Server error', false);
+      goalFeedback.textContent = data.error || 'Server error';
+      goalFeedback.className = 'feedback err';
       addLog('error', `Goal failed: ${data.error}`);
     }
   } catch {
-    setFeedback(goalFeedback, 'Không thể kết nối server', false);
+    goalFeedback.textContent = 'Không thể kết nối server';
+    goalFeedback.className = 'feedback err';
     addLog('error', 'Goal: không thể kết nối server');
   } finally {
     btnSendGoal.disabled = false;
@@ -693,19 +690,24 @@ btnSendGoal.addEventListener('click', sendGoal);
 
 // ── Gửi tốc độ ────────────────────────────────────────────────────────────────
 async function sendSpeed(kmh) {
-  const ts = new Date().toLocaleTimeString('en-GB', { hour12: false });
-
-  // Ưu tiên ROS WebSocket nếu đang kết nối
   if (connected && speedPub) {
     const mps = kmh / 3.6;
     speedPub.publish(new ROSLIB.Message({ data: mps }));
-    lastSpeedEl.innerHTML = `Sent at ${ts}: <b>${kmh.toFixed(2)} km/h (${mps.toFixed(3)} m/s)</b>`;
-    setFeedback(speedFeedback, `✓ Published to /carla/${ROLE_NAME}/target_speed (ROS)`, true);
+    
+    speedFeedback.textContent = `Đã gửi tốc độ ${kmh.toFixed(2)} km/h thành công.`;
+    speedFeedback.className = 'feedback ok';
+    
+    setTimeout(() => {
+      if (speedFeedback.className === 'feedback ok') {
+        speedFeedback.textContent = 'Nhập tốc độ cần gửi';
+        speedFeedback.className = 'feedback';
+      }
+    }, 5000);
+
     addLog('info', `Speed [ROS] → ${kmh.toFixed(2)} km/h = ${mps.toFixed(3)} m/s`);
     return;
   }
 
-  // Fallback: gửi qua Flask API
   btnSendSpeed.disabled = true;
   btnStop.disabled      = true;
   try {
@@ -717,15 +719,26 @@ async function sendSpeed(kmh) {
     const data = await res.json();
     if (data.ok) {
       const via = data.ros ? ' → ROS' : ' (no ROS)';
-      lastSpeedEl.innerHTML = `Sent at ${ts}: <b>${kmh.toFixed(2)} km/h (${data.speed_mps} m/s)</b>`;
-      setFeedback(speedFeedback, `✓ Sent via server${via}`, true);
+      
+      speedFeedback.textContent = `Đã gửi tốc độ ${kmh.toFixed(2)} km/h thành công.`;
+      speedFeedback.className = 'feedback ok';
+      
+      setTimeout(() => {
+        if (speedFeedback.className === 'feedback ok') {
+          speedFeedback.textContent = 'Nhập tốc độ cần gửi';
+          speedFeedback.className = 'feedback';
+        }
+      }, 5000);
+
       addLog('info', `Speed [API${via}] → ${kmh.toFixed(2)} km/h = ${data.speed_mps} m/s`);
     } else {
-      setFeedback(speedFeedback, data.error || 'Server error', false);
+      speedFeedback.textContent = data.error || 'Server error';
+      speedFeedback.className = 'feedback err';
       addLog('error', `Speed failed: ${data.error}`);
     }
   } catch {
-    setFeedback(speedFeedback, 'Không thể kết nối server', false);
+    speedFeedback.textContent = 'Không thể kết nối server';
+    speedFeedback.className = 'feedback err';
     addLog('error', 'Speed: không thể kết nối server');
   } finally {
     btnSendSpeed.disabled = false;
@@ -735,7 +748,11 @@ async function sendSpeed(kmh) {
 
 btnSendSpeed.addEventListener('click', () => {
   const v = parseFloat(speedKmh.value);
-  if (isNaN(v) || v < 0) { setFeedback(speedFeedback, 'Speed phải là số >= 0.', false); return; }
+  if (isNaN(v) || v < 0) {
+    speedFeedback.textContent = 'Speed phải là số >= 0.';
+    speedFeedback.className = 'feedback err';
+    return; 
+  }
   sendSpeed(v);
 });
 
@@ -745,6 +762,114 @@ btnStop.addEventListener('click', async () => {
   speedKmh.value = '0';
   speedMpsEl.textContent = '0.000 m/s';
   await sendSpeed(0);
-  if (connected) setFeedback(speedFeedback, '⚠ Emergency stop sent!', true);
+  
+  if (connected) {
+    speedFeedback.textContent = '⚠ Emergency stop sent!';
+    speedFeedback.className = 'feedback err';
+    setTimeout(() => {
+      if (speedFeedback.textContent === '⚠ Emergency stop sent!') {
+        speedFeedback.textContent = 'Nhập tốc độ cần gửi';
+        speedFeedback.className = 'feedback';
+      }
+    }, 5000);
+  }
   addLog('warn', 'EMERGENCY STOP — speed = 0');
 });
+
+// ── Lưu Địa Điểm (Sử dụng Modal HTML) ─────────────────────────────────────────
+const btnSaveLocation = document.getElementById('btnSaveLocation');
+const savedLocationList = document.getElementById('savedLocationList');
+
+const saveLocationModal = document.getElementById('saveLocationModal');
+const locationNameInput = document.getElementById('locationNameInput');
+const btnLocationCancel = document.getElementById('btnLocationCancel');
+const btnLocationSave   = document.getElementById('btnLocationSave');
+
+let savedLocations = []; 
+
+function renderSavedLocations() {
+  savedLocationList.innerHTML = ''; 
+  
+  savedLocations.forEach((loc, index) => {
+    const li = document.createElement('li');
+    li.className = 'saved-loc-item';
+    
+    // Tọa độ hiển thị dạng (<x>,<y>)
+    li.innerHTML = `
+      <div class="saved-loc-name">${index + 1}. ${escHtml(loc.name)}</div>
+      <div class="saved-loc-coord">(${loc.wp.x.toFixed(3)}, ${loc.wp.y.toFixed(3)})</div>
+    `;
+    
+    li.addEventListener('click', () => {
+      selectedWaypoint = loc.wp;
+      updateSelectedPin();
+      goalX.value = loc.wp.x.toFixed(3);
+      goalY.value = loc.wp.y.toFixed(3);
+      
+      goalFeedback.textContent = `Đã chọn lại địa điểm: ${loc.name}`;
+      goalFeedback.className = 'feedback ok';
+      
+      addLog('info', `Đã chọn lại điểm lưu: ${loc.name}`);
+    });
+    
+    savedLocationList.appendChild(li);
+  });
+}
+
+function closeLocationModal() {
+  saveLocationModal.style.display = 'none';
+  locationNameInput.value = '';
+}
+
+btnSaveLocation.addEventListener('click', () => {
+  if (!selectedWaypoint) {
+    alert('Vui lòng click chọn một waypoint trên bản đồ trước khi lưu!');
+    return;
+  }
+  saveLocationModal.style.display = 'flex';
+  locationNameInput.focus();
+});
+
+btnLocationCancel.addEventListener('click', closeLocationModal);
+saveLocationModal.addEventListener('click', e => { if (e.target === saveLocationModal) closeLocationModal(); });
+
+// Sửa lại hàm thực thi lưu địa điểm
+function executeSaveLocation() {
+  const locName = locationNameInput.value;
+  const trimmedName = locName ? locName.trim() : '';
+
+  // Reset trạng thái lỗi mỗi khi ấn nút lưu
+  locationNameError.style.display = 'none';
+  
+  if (trimmedName === '') {
+    locationNameError.textContent = 'Tên địa điểm không được để trống.';
+    locationNameError.style.display = 'block';
+    return;
+  }
+  
+  const isDuplicate = savedLocations.some(loc => loc.name.toLowerCase() === trimmedName.toLowerCase());
+  if (isDuplicate) {
+    locationNameError.textContent = 'Tên địa điểm không phù hợp. Vui lòng chọn tên khác.';
+    locationNameError.style.display = 'block';
+    return;
+  }
+  
+  // Lưu thành công
+  savedLocations.push({
+    name: trimmedName,
+    wp: selectedWaypoint 
+  });
+  
+  renderSavedLocations();
+  closeLocationModal();
+  addLog('info', `Đã lưu địa điểm mới: ${trimmedName}`);
+
+  locationNameInput.addEventListener('input', () => {
+  if (locationNameError.style.display === 'block') {
+    locationNameError.style.display = 'none';
+  }
+});
+}
+
+btnLocationSave.addEventListener('click', executeSaveLocation);
+locationNameInput.addEventListener('keydown', e => { if (e.key === 'Enter') executeSaveLocation(); });

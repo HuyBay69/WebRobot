@@ -26,7 +26,6 @@
 
   <div class="workspace">
 
-    <!-- Map panel -->
     <div class="map-panel">
       <div class="map-toolbar">
         <div class="map-title-wrap">
@@ -34,7 +33,6 @@
         </div>
         <button class="btn-upload" id="btnUploadWaypoint">Upload Waypoints</button>
         <button class="btn-upload" id="btnUpload">Upload Map</button>
-        <button class="btn-upload" id="btnSaveAlignment" disabled>Save Alignment</button>
         <input type="file" id="mapFileInput" accept="image/*" style="display:none" />
         <input type="file" id="waypointFileInput" accept=".json" style="display:none" />
       </div>
@@ -54,41 +52,44 @@
       </div>
     </div>
 
-    <!-- Control panel -->
     <div class="ctrl-panel">
 
       <section class="card">
         <h3 class="section-title">GOAL COORDINATES</h3>
-        <div class="field-group">
-          <div class="field">
+        <div class="goal-row">
+          <div class="field goal-field">
             <label class="field-label">X <span class="unit">(m)</span></label>
             <input class="field-input" id="goalX" type="number" step="any" placeholder="0.000" />
           </div>
-          <div class="field">
+          <div class="field goal-field">
             <label class="field-label">Y <span class="unit">(m)</span></label>
             <input class="field-input" id="goalY" type="number" step="any" placeholder="0.000" />
           </div>
+          <button class="btn-action" id="btnSendGoal">Send Goal</button>
         </div>
-        <div class="last-sent" id="lastGoal"></div>
-        <button class="btn-action" id="btnSendGoal">Send Goal</button>
-        <div class="feedback" id="goalFeedback"></div>
+        <div class="feedback" id="goalFeedback">Chọn một vị trí trên bản đồ</div>
       </section>
 
       <section class="card">
         <h3 class="section-title">TARGET SPEED</h3>
         <div class="speed-row">
-          <div class="field" style="flex:1">
+          <div class="field speed-field">
             <label class="field-label">Speed <span class="unit">(km/h)</span></label>
             <input class="field-input" id="speedKmh" type="number" min="0" step="any" placeholder="0.0" />
           </div>
           <div class="mps-badge" id="speedMps">— m/s</div>
-        </div>
-        <div class="last-sent" id="lastSpeed"></div>
-        <div class="btn-pair">
           <button class="btn-action" id="btnSendSpeed">Send Speed</button>
-          <button class="btn-estop" id="btnStop">EMERGENCY STOP</button>
         </div>
-        <div class="feedback" id="speedFeedback"></div>
+        <button class="btn-estop" id="btnStop">EMERGENCY STOP</button>
+        <div class="feedback" id="speedFeedback">Nhập tốc độ cần gửi</div>
+      </section>
+
+      <section class="card card-saved-loc">
+        <h3 class="section-title">SAVED LOCATION</h3>
+        <div class="saved-loc-container">
+          <ul id="savedLocationList"></ul>
+        </div>
+        <button class="btn-action" id="btnSaveLocation" style="background-color: var(--accent); color: #0d1117;">Lưu địa điểm</button>
       </section>
 
       <section class="card card-log">
@@ -101,7 +102,6 @@
     </div>
   </div>
 
-  <!-- Upload Modal -->
   <div class="modal-overlay" id="uploadModal" style="display:none">
     <div class="modal">
       <h3 class="modal-title">Upload Map</h3>
@@ -118,6 +118,21 @@
         <button class="btn-action" id="btnModalUpload" disabled>Upload</button>
       </div>
       <div class="feedback" id="uploadFeedback"></div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="saveLocationModal" style="display:none">
+    <div class="modal">
+      <h3 class="modal-title">Lưu địa điểm</h3>
+      <div class="modal-field">
+        <label class="field-label">Tên địa điểm</label>
+        <input class="field-input" id="locationNameInput" type="text" placeholder="Nhập tên..." autocomplete="off" />
+        <div id="locationNameError" class="feedback err" style="display:none; margin-top:5px;"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-secondary" id="btnLocationCancel">Hủy</button>
+        <button class="btn-action" id="btnLocationSave">Lưu lại</button>
+      </div>
     </div>
   </div>
 
