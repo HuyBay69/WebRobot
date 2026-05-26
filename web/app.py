@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
 import math
 import os
+import re
 import threading
 
 from flask import Flask, jsonify, render_template, request, send_from_directory
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['UPLOAD_FOLDER'] = os.path.join(os.path.dirname(__file__), 'uploads')
+
+# ── Cấu hình thư mục ──────────────────────────────────────────────────────────
+BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
+MAPS_DIR    = os.path.join(BASE_DIR, 'maps')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
 
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'}
+ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'}
 
 # ── Optional ROS integration ───────────────────────────────────────────────────
 ROS_AVAILABLE = False
@@ -127,8 +131,62 @@ def _start_ros():
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
-def _allowed(filename: str) -> bool:
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+def _allowed_image(filename: str) -> bool:
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_IMAGE_EXTENSIONS
+
+
+def _sanitize_name(name: str) -> str:
+    """Chuyển tên bản đồ thành tên thư mục an toàn: khoảng trắng → _, bỏ ký tự đặc biệt."""
+    name = name.strip()
+    name = re.sub(r'[\s]+', '_', name)
+    name = re.sub(r'[^\w\-.]', '', name)
+    return name or 'map'
+
+
+def _get_next_index() -> int:
+    """Tìm STT tiếp theo dựa trên các thư mục đã tồn tại trong MAPS_DIR."""
+    if not os.path.isdir(MAPS_DIR):
+        return 1
+    indices = []
+    for d in os.listdir(MAPS_DIR):
+        m = re.match(r'^(\d+)\.', d)
+        if m and os.path.isdir(os.path.join(MAPS_DIR, d)):
+            indices.append(int(m.group(1)))
+    return max(indices, default=0) + 1
+
+
+def _list_maps() -> list:
+    """Trả về danh sách các bản đồ đã lưu, sắp xếp theo STT."""
+    if not os.path.isdir(MAPS_DIR):
+        return []
+    maps = []
+    for d in sorted(os.listdir(MAPS_DIR)):
+        m = re.match(r'^(\d+)\.(.+)$', d)
+        if not m:
+            continue
+        folder_path = os.path.join(MAPS_DIR, d)
+        if not os.path.isdir(folder_path):
+            continue
+        idx = int(m.group(1))
+        raw_name = m.group(2).replace('_', ' ')
+        # Tìm file ảnh
+        image_file = None
+        for fname in os.listdir(folder_path):
+            if fname.startswith('image.') and fname.rsplit('.', 1)[-1].lower() in ALLOWED_IMAGE_EXTENSIONS:
+                image_file = fname
+                break
+        has_waypoint = os.path.isfile(os.path.join(folder_path, 'waypoints.json'))
+        maps.append({
+            'id':          idx,
+            'folder':      d,
+            'name':        raw_name,
+            'has_image':   image_file is not None,
+            'has_waypoint': has_waypoint,
+            'image_url':   f'/maps/{d}/{image_file}' if image_file else None,
+            'waypoint_url': f'/maps/{d}/waypoints.json' if has_waypoint else None,
+        })
+    maps.sort(key=lambda x: x['id'])
+    return maps
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
@@ -137,31 +195,86 @@ def index():
     return render_template('index.html')
 
 
-@app.route('/api/upload-map', methods=['POST'])
+# Serve file tĩnh từ thư mục maps/
+@app.route('/maps/<path:filepath>')
+def serve_map_file(filepath):
+    directory = os.path.join(MAPS_DIR, os.path.dirname(filepath))
+    filename  = os.path.basename(filepath)
+    return send_from_directory(directory, filename)
+
+
+# ── Map Manager API ────────────────────────────────────────────────────────────
+
+@app.route('/api/maps', methods=['GET'])
+def api_list_maps():
+    """Lấy danh sách tất cả bản đồ đã lưu."""
+    return jsonify({'ok': True, 'maps': _list_maps()})
+
+
+@app.route('/api/maps/upload', methods=['POST'])
 def api_upload_map():
-    if 'file' not in request.files:
-        return jsonify({'ok': False, 'error': 'Không có file'}), 400
+    """
+    Upload bản đồ mới.
+    Form fields:
+      - map_name  (str)       : tên bản đồ
+      - waypoint  (file .json): file waypoint
+      - image     (file ảnh)  : ảnh bản đồ
+    """
+    # --- Validate ---
+    map_name = request.form.get('map_name', '').strip()
+    if not map_name:
+        return jsonify({'ok': False, 'error': 'Chưa nhập tên bản đồ'}), 400
 
-    f = request.files['file']
-    map_name = request.form.get('map_name', '').strip() or f.filename
+    if 'waypoint' not in request.files or request.files['waypoint'].filename == '':
+        return jsonify({'ok': False, 'error': 'Chưa chọn file waypoint (.json)'}), 400
 
-    if f.filename == '':
-        return jsonify({'ok': False, 'error': 'Chưa chọn file'}), 400
+    if 'image' not in request.files or request.files['image'].filename == '':
+        return jsonify({'ok': False, 'error': 'Chưa chọn file ảnh bản đồ'}), 400
 
-    if not _allowed(f.filename):
-        return jsonify({'ok': False, 'error': 'Chỉ hỗ trợ file ảnh (png/jpg/gif/bmp/webp)'}), 400
+    wp_file  = request.files['waypoint']
+    img_file = request.files['image']
 
-    filename = secure_filename(f.filename)
-    save_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    f.save(save_path)
+    if not wp_file.filename.lower().endswith('.json'):
+        return jsonify({'ok': False, 'error': 'File waypoint phải có định dạng .json'}), 400
 
-    return jsonify({'ok': True, 'filename': filename, 'map_name': map_name, 'url': f'/uploads/{filename}'})
+    if not _allowed_image(img_file.filename):
+        return jsonify({'ok': False, 'error': 'File ảnh không hợp lệ (png/jpg/jpeg/gif/bmp/webp)'}), 400
+
+    # --- Tạo thư mục ---
+    idx           = _get_next_index()
+    safe_name     = _sanitize_name(map_name)
+    folder_name   = f'{idx}.{safe_name}'
+    folder_path   = os.path.join(MAPS_DIR, folder_name)
+    os.makedirs(folder_path, exist_ok=True)
+
+    # --- Lưu waypoint ---
+    wp_file.save(os.path.join(folder_path, 'waypoints.json'))
+
+    # --- Lưu ảnh (giữ đuôi gốc, đổi tên thành image.<ext>) ---
+    img_ext = img_file.filename.rsplit('.', 1)[1].lower()
+    img_file.save(os.path.join(folder_path, f'image.{img_ext}'))
+
+    return jsonify({
+        'ok':          True,
+        'id':          idx,
+        'folder':      folder_name,
+        'name':        map_name,
+        'image_url':   f'/maps/{folder_name}/image.{img_ext}',
+        'waypoint_url': f'/maps/{folder_name}/waypoints.json',
+    })
 
 
-@app.route('/uploads/<filename>')
-def uploaded_file(filename):
-    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+@app.route('/api/maps/<int:map_id>/load', methods=['GET'])
+def api_load_map(map_id: int):
+    """Trả về thông tin để load bản đồ theo ID (STT)."""
+    maps = _list_maps()
+    found = next((m for m in maps if m['id'] == map_id), None)
+    if not found:
+        return jsonify({'ok': False, 'error': f'Không tìm thấy bản đồ #{map_id}'}), 404
+    return jsonify({'ok': True, **found})
 
+
+# ── Navigation API ─────────────────────────────────────────────────────────────
 
 @app.route('/api/send-goal', methods=['POST'])
 def api_send_goal():
@@ -179,7 +292,6 @@ def api_send_goal():
         except Exception as e:
             return jsonify({'ok': False, 'error': str(e)}), 500
 
-    # ROS không khả dụng — chỉ xác nhận đã nhận
     return jsonify({'ok': True, 'ros': False, 'snapped': False, 'x': x, 'y': y})
 
 
@@ -206,10 +318,10 @@ def api_send_speed():
     return jsonify({'ok': True, 'ros': False, 'speed_kmh': speed_kmh, 'speed_mps': speed_mps})
 
 
+# ── Bootstrap ──────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    os.makedirs(MAPS_DIR, exist_ok=True)
 
-    # Khởi động ROS node nền (chỉ trong process chính, tránh double-init khi debug reloader)
     if ROS_AVAILABLE and os.environ.get('WERKZEUG_RUN_MAIN') != 'false':
         _start_ros()
 
