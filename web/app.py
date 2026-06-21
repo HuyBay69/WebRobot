@@ -391,22 +391,25 @@ def api_odom():
 
 @app.route('/api/odom/stream')
 def api_odom_stream():
-    """SSE endpoint — push ngay khi /carla/markers callback kích hoạt Event.
-    Không poll, không delay thêm — latency chỉ còn đúng 1 network round-trip.
+    """SSE endpoint — gửi đều 20 Hz (50 ms/lần), chỉ gửi khi position thay đổi.
+    Tránh burst (CARLA đẩy 7 msg/0.1s) gây CSS-transition quá ngắn,
+    và tránh event-driven miss khiến client nhận gap 6 giây rồi nhảy 9m.
     """
     def generate():
+        prev_xy = None
         while True:
             if _ros_node is None:
                 time.sleep(0.1)
                 continue
-            # Block đến khi callback báo có frame mới, timeout 1s để không treo mãi
-            triggered = _ros_node._odom_event.wait(timeout=1.0)
-            if not triggered:
-                continue   # timeout, thử lại
-            _ros_node._odom_event.clear()
+            time.sleep(0.05)                       # 20 Hz cố định
             data = _ros_node.get_odom()
-            if data is not None:
-                yield f"data: {json.dumps(data)}\n\n"
+            if data is None:
+                continue
+            xy = (round(data['x'], 3), round(data['y'], 3))
+            if xy == prev_xy:
+                continue                           # chưa đổi → bỏ qua
+            prev_xy = xy
+            yield f"data: {json.dumps(data)}\n\n"
 
     return Response(
         stream_with_context(generate()),

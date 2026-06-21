@@ -55,6 +55,11 @@ let lastOdomPos      = null;   // { pixel_x, pixel_y } trong ảnh gốc
 let lastOdomYawDeg   = 0;      // góc hiện tại (degrees) để rotate icon
 let odomStaleTimer   = null;   // timeout để đánh dấu dữ liệu cũ
 
+// ── CSS-transition smooth movement ───────────────────────────────────────────
+let lastMsgTime    = 0;      // performance.now() của message trước
+let cssTransDur    = 150;    // ms — adaptive, đo từ interval thực giữa các message
+let cssYawAccum    = 90;     // góc tích lũy (unwrapped) để CSS transition xoay đường ngắn
+
 const MIN_ZOOM_STATIC = 0.1;
 const MAX_ZOOM_STATIC = 2.0;
 let MIN_ZOOM = 0.1;
@@ -265,43 +270,74 @@ function imagePixelToScreen(pixel_x, pixel_y) {
   };
 }
 
-/** Cập nhật vị trí và góc xoay #carIcon từ lastOdomPos / lastOdomYawDeg. */
+/** Render car icon — chỉ dùng transform (GPU composite, không trigger layout). */
+function renderCarAt(px, py, cssYaw) {
+  if (!mapHasImage || !hasValidWaypointMetadata(waypointMetadata)) return;
+  const { screenX, screenY } = imagePixelToScreen(px, py);
+  carIcon.style.transform = `translate3d(${screenX}px, ${screenY}px, 0) translate(-50%, -50%) rotate(${cssYaw}deg)`;
+}
+
+/** Cập nhật vị trí khi pan/zoom — tắt transition để snap ngay. */
 function updateCarIcon() {
-  if (!lastOdomPos || !mapHasImage || !hasValidWaypointMetadata(waypointMetadata)) {
-    return;
-  }
-  const { screenX, screenY } = imagePixelToScreen(lastOdomPos.pixel_x, lastOdomPos.pixel_y);
-  carIcon.style.left      = `${screenX}px`;
-  carIcon.style.top       = `${screenY}px`;
-  // SVG mũi chỉ lên (−Y canvas) → khi yaw=0 (hướng trục X ROS = phải) cần +90°
-  carIcon.style.transform = `translate(-50%, -50%) rotate(${lastOdomYawDeg + 90}deg)`;
+  if (!lastOdomPos || !mapHasImage || !hasValidWaypointMetadata(waypointMetadata)) return;
+  carIcon.style.transitionDuration = '0ms';
+  renderCarAt(lastOdomPos.pixel_x, lastOdomPos.pixel_y, cssYawAccum);
+  requestAnimationFrame(() => {
+    carIcon.style.transitionDuration = `${Math.round(cssTransDur)}ms`;
+  });
 }
 
 /** Xử lý message từ /carla/hero/odometry */
 function handleOdomMessage(msg) {
-  // ── Vị trí ──
   const rosX = msg.pose.pose.position.x;
   const rosY = msg.pose.pose.position.y;
   const pixel = rosToPixel(rosX, rosY);
-  if (pixel) {
-    lastOdomPos = pixel;
-    carIcon.style.display = 'block';
-    updateCarIcon();
-  }
+  if (!pixel) return;
 
-  // ── Góc quay (heading) ──
+  // ── Góc quay ──
   const q = msg.pose.pose.orientation;
   const yawRad = quatToYawRad(q);
-  // ROS yaw: +CCW. Pixel Y xuống dưới → flip dấu để xoay đúng chiều trên màn hình
-  lastOdomYawDeg = -(yawRad * 180 / Math.PI);
-  updateCarIcon();
+  const newYawDeg = -(yawRad * 180 / Math.PI) + 90;
+
+  // Unwrap góc để CSS transition xoay đường ngắn nhất (tránh quay 350° thay vì 10°)
+  let diff = newYawDeg - (cssYawAccum % 360);
+  if (diff > 180) diff -= 360;
+  if (diff < -180) diff += 360;
+  cssYawAccum += diff;
+
+  // ── Transition duration — adaptive theo interval + distance ──
+  const now = performance.now();
+  if (lastMsgTime > 0) {
+    const gap = now - lastMsgTime;
+
+    // Tính khoảng cách pixel giữa vị trí cũ và mới
+    const dx = pixel.pixel_x - (lastOdomPos ? lastOdomPos.pixel_x : pixel.pixel_x);
+    const dy = pixel.pixel_y - (lastOdomPos ? lastOdomPos.pixel_y : pixel.pixel_y);
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (gap > 300 && dist > 5) {
+      // Gap lớn + nhảy xa: transition dài tỷ lệ gap để xe chạy đều thay vì bay vụt
+      cssTransDur = Math.min(gap * 0.8, 2000);
+    } else {
+      // Hoạt động bình thường (server 20Hz → gap ~50ms): EMA giữ đều
+      const clamped = Math.max(30, Math.min(200, gap));
+      cssTransDur = cssTransDur * 0.3 + clamped * 1.2 * 0.7;
+    }
+  }
+  lastMsgTime = now;
+
+  // ── Render (CSS transition tự animate mượt giữa vị trí cũ → mới) ──
+  carIcon.style.transitionDuration = `${Math.round(cssTransDur)}ms`;
+  carIcon.style.display = 'block';
+  lastOdomPos    = pixel;
+  lastOdomYawDeg = newYawDeg;
+  renderCarAt(pixel.pixel_x, pixel.pixel_y, cssYawAccum);
 
   // ── Tốc độ thực ──
   const lx = msg.twist.twist.linear.x;
   const ly = msg.twist.twist.linear.y;
   const lz = msg.twist.twist.linear.z;
-  const speedMps = Math.sqrt(lx * lx + ly * ly + lz * lz);
-  const speedKmhActual = speedMps * 3.6;
+  const speedKmhActual = Math.sqrt(lx * lx + ly * ly + lz * lz) * 3.6;
   actualSpeedEl.textContent = `${speedKmhActual.toFixed(1)} km/h`;
   actualSpeedEl.classList.remove('stale', 'no-data');
 }
@@ -928,6 +964,9 @@ function stopOdomPolling() {
     odomEventSource.close();
     odomEventSource = null;
   }
+  lastMsgTime = 0;
+  cssTransDur = 150;
+  cssYawAccum = 90;
   clearTimeout(odomStaleTimer);
   lastOdomPos    = null;
   lastOdomYawDeg = 0;

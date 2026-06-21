@@ -230,6 +230,8 @@ html, body {
   display: none;
   z-index: 13;
   filter: drop-shadow(0 0 4px rgba(0, 200, 150, 0.7));
+  will-change: transform;
+  transition: transform 150ms linear;
 }
 
 .map-placeholder {
