@@ -2,11 +2,12 @@
 import json
 import math
 import os
+import queue
 import re
 import threading
 import time
 
-from flask import Flask, jsonify, render_template, request, send_from_directory, Response, stream_with_context
+from flask import Flask, jsonify, render_template, request, send_from_directory, Response, stream_with_context, Response, stream_with_context
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
@@ -76,7 +77,8 @@ if ROS_AVAILABLE:
             # Nguồn chính: vị trí + heading, publish liên tục kể cả khi đứng yên
             self._vehicle_marker      = None
             self._vehicle_marker_lock = threading.Lock()
-            self.vehicle_marker_sub = self.create_subscription(
+            self._odom_event          = threading.Event()   # báo SSE ngay khi có frame mới
+            self.vehicle_marker_sub   = self.create_subscription(
                 MarkerArray,
                 '/carla/markers',
                 self._vehicle_marker_callback,
@@ -84,7 +86,7 @@ if ROS_AVAILABLE:
             )
 
             # ── Odometry subscriber ────────────────────────────────────────
-            # Chỉ dùng để lấy tốc độ (twist.linear); pose lấy từ /carla/markers
+            # Chỉ lấy twist.linear (tốc độ); pose lấy từ /carla/markers
             self._odom_speed      = None   # (vx, vy, vz)
             self._odom_speed_lock = threading.Lock()
             self.odom_sub = self.create_subscription(
@@ -94,6 +96,10 @@ if ROS_AVAILABLE:
                 1,
             )
 
+            # ── Log writer thread (không block callback) ───────────────────
+            self._log_queue = queue.Queue()
+            threading.Thread(target=self._log_writer, daemon=True).start()
+
             self.get_logger().info('RobotROSNode started.')
 
         def _road_callback(self, msg: MarkerArray):
@@ -101,23 +107,22 @@ if ROS_AVAILABLE:
                 self._markers = list(msg.markers)
 
         def _vehicle_marker_callback(self, msg: MarkerArray):
-            """Lưu marker đầu tiên — đó là xe hero. Ghi vị trí ra livetracking.log."""
+            """Cập nhật vị trí + heading từ /carla/markers, push SSE ngay lập tức."""
             if not msg.markers:
                 return
             marker = msg.markers[0]
             with self._vehicle_marker_lock:
                 self._vehicle_marker = marker
-
-            # Ghi log vị trí thời gian thực
+            # Báo SSE có frame mới — không cần poll nữa
+            self._odom_event.set()
+            # Đẩy log vào queue để thread riêng ghi, không block callback
             p = marker.pose.position
             o = marker.pose.orientation
             ts = time.strftime('%Y-%m-%d %H:%M:%S')
-            line = f"{ts} | x={p.x:.4f} y={p.y:.4f} z={p.z:.4f} | qx={o.x:.6f} qy={o.y:.6f} qz={o.z:.6f} qw={o.w:.6f}\n"
-            try:
-                with open(TRACKING_LOG, 'a') as f:
-                    f.write(line)
-            except Exception as e:
-                self.get_logger().warn(f'livetracking.log write error: {e}')
+            self._log_queue.put(
+                f"{ts} | x={p.x:.4f} y={p.y:.4f} z={p.z:.4f}"
+                f" | qx={o.x:.6f} qy={o.y:.6f} qz={o.z:.6f} qw={o.w:.6f}\n"
+            )
 
         def _odom_callback(self, msg: Odometry):
             """Chỉ lưu twist.linear để tính tốc độ."""
@@ -125,20 +130,26 @@ if ROS_AVAILABLE:
             with self._odom_speed_lock:
                 self._odom_speed = (l.x, l.y, l.z)
 
+        def _log_writer(self):
+            """Thread riêng ghi livetracking.log — không block ROS callback."""
+            with open(TRACKING_LOG, 'a') as f:
+                while True:
+                    line = self._log_queue.get()
+                    f.write(line)
+                    f.flush()
+
         def get_odom(self):
-            """Trả về dict tracking:
+            """Trả về dict tracking mới nhất:
             - pose từ /carla/markers (luôn có, kể cả khi đứng yên)
-            - tốc độ từ /carla/hero/odometry (0.0 nếu chưa có)
+            - tốc độ từ /carla/hero/odometry (0.0 nếu xe đứng yên)
             """
             with self._vehicle_marker_lock:
                 if self._vehicle_marker is None:
                     return None
                 p = self._vehicle_marker.pose.position
                 o = self._vehicle_marker.pose.orientation
-
             with self._odom_speed_lock:
                 spd = self._odom_speed
-
             vx, vy, vz = spd if spd is not None else (0.0, 0.0, 0.0)
             return {
                 'x':  p.x,  'y':  p.y,  'z':  p.z,
@@ -380,25 +391,32 @@ def api_odom():
 
 @app.route('/api/odom/stream')
 def api_odom_stream():
-    """SSE endpoint — push odom liên tục ngay khi có data mới, không cần client poll."""
+    """SSE endpoint — push ngay khi /carla/markers callback kích hoạt Event.
+    Không poll, không delay thêm — latency chỉ còn đúng 1 network round-trip.
+    """
     def generate():
-        last_sent = None
         while True:
-            if _ros_node is not None:
-                data = _ros_node.get_odom()
-                if data is not None and data != last_sent:
-                    last_sent = data
-                    yield f"data: {json.dumps(data)}\n\n"
-            time.sleep(0.02)   # kiểm tra mỗi 20ms (~50Hz), gửi chỉ khi có data mới
+            if _ros_node is None:
+                time.sleep(0.1)
+                continue
+            # Block đến khi callback báo có frame mới, timeout 1s để không treo mãi
+            triggered = _ros_node._odom_event.wait(timeout=1.0)
+            if not triggered:
+                continue   # timeout, thử lại
+            _ros_node._odom_event.clear()
+            data = _ros_node.get_odom()
+            if data is not None:
+                yield f"data: {json.dumps(data)}\n\n"
 
     return Response(
         stream_with_context(generate()),
         mimetype='text/event-stream',
         headers={
-            'Cache-Control':    'no-cache',
-            'X-Accel-Buffering': 'no',   # tắt nginx buffer nếu có proxy phía trước
+            'Cache-Control':     'no-cache',
+            'X-Accel-Buffering': 'no',
         }
     )
+
 
 @app.route('/api/send-goal', methods=['POST'])
 def api_send_goal():
