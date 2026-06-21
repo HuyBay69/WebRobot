@@ -23,13 +23,9 @@
         </svg>
         Select Map
       </button>
-      <div class="conn-input-wrap">
-        <span class="conn-prefix">ws://</span>
-        <input class="conn-input" id="wsHost" type="text" value="localhost:9090" spellcheck="false" />
-      </div>
-      <button class="btn-connect" id="btnConnect">Connect ROS</button>
+      <button class="btn-connect" id="btnConnect">Check ROS</button>
       <span class="conn-dot" id="connDot"></span>
-      <span class="conn-status" id="connStatus">Disconnected</span>
+      <span class="conn-status" id="connStatus">Checking…</span>
     </div>
   </header>
 
@@ -55,6 +51,7 @@
           <img id="mapImg" src="" alt="Map" style="display:none" />
           <canvas id="overlayCanvas" style="display:none"></canvas>
           <img id="selectedWaypointPin" class="waypoint-pin" src="/static/icons/pin-red.svg" alt="Selected waypoint pin" />
+          <img id="carIcon" src="/static/icons/car.svg" alt="Vehicle position" />
           <div class="map-placeholder" id="mapPlaceholder">
             <p>Nhấn "Select Map" ở thanh trên để chọn hoặc tải lên bản đồ.</p>
           </div>
@@ -65,34 +62,28 @@
     <!-- ─── CONTROL PANEL ─── -->
     <div class="ctrl-panel">
 
-      <section class="card">
-        <h3 class="section-title">GOAL COORDINATES</h3>
-        <div class="goal-row">
-          <div class="field goal-field">
-            <label class="field-label">X <span class="unit">(m)</span></label>
-            <input class="field-input" id="goalX" type="number" step="any" placeholder="0.000" />
-          </div>
-          <div class="field goal-field">
-            <label class="field-label">Y <span class="unit">(m)</span></label>
-            <input class="field-input" id="goalY" type="number" step="any" placeholder="0.000" />
-          </div>
-          <button class="btn-action" id="btnSendGoal">Send Goal</button>
-        </div>
-        <div class="feedback" id="goalFeedback">Chọn một vị trí trên bản đồ</div>
-      </section>
+      <section class="card card-navigation">
+        <h3 class="section-title">NAVIGATION</h3>
+        <div class="nav-grid">
+          <div class="nav-label">X <span class="unit">(m)</span></div>
+          <div class="nav-label">Y <span class="unit">(m)</span></div>
+          <div class="nav-label">&nbsp;</div>
 
-      <section class="card">
-        <h3 class="section-title">TARGET SPEED</h3>
-        <div class="speed-row">
-          <div class="field speed-field">
-            <label class="field-label">Speed <span class="unit">(km/h)</span></label>
-            <input class="field-input" id="speedKmh" type="number" min="0" step="any" placeholder="0.0" />
-          </div>
-          <div class="mps-badge" id="speedMps">— m/s</div>
-          <button class="btn-action" id="btnSendSpeed">Send Speed</button>
+          <input class="field-input" id="goalX" type="number" step="any" placeholder="0.000" />
+          <input class="field-input" id="goalY" type="number" step="any" placeholder="0.000" />
+          <button class="btn-go" id="btnSendGoal">GO</button>
+
+          <div class="nav-label">Speed <span class="unit">(km/h)</span></div>
+          <div class="nav-label">Actual <span class="unit">(km/h)</span></div>
+          <div class="nav-label">&nbsp;</div>
+
+          <input class="field-input" id="speedKmh" type="number" min="0" step="any" value="10" />
+          <div class="actual-speed-display" id="actualSpeed">— km/h</div>
+          <button class="btn-estop" id="btnStop">STOP</button>
         </div>
-        <button class="btn-estop" id="btnStop">EMERGENCY STOP</button>
-        <div class="feedback" id="speedFeedback">Nhập tốc độ cần gửi</div>
+        <div class="nav-feedback-row">
+          <div class="feedback" id="navFeedback">Chọn một vị trí trên bản đồ hoặc nhập toạ độ</div>
+        </div>
       </section>
 
       <section class="card card-saved-loc">

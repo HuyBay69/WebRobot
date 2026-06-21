@@ -217,6 +217,21 @@ html, body {
   z-index: 12;
 }
 
+/* Car tracking icon */
+#carIcon {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  left: 0;
+  top: 0;
+  transform-origin: center center;
+  transform: translate(-50%, -50%) rotate(0deg);
+  pointer-events: none;
+  display: none;
+  z-index: 13;
+  filter: drop-shadow(0 0 4px rgba(0, 200, 150, 0.7));
+}
+
 .map-placeholder {
   position: absolute;
   inset: 0;
@@ -278,7 +293,8 @@ html, body {
   border-radius: 6px;
   color: var(--text);
   font-size: 14px;
-  padding: 8px 10px;
+  padding: 0 10px;
+  height: 36px;
   outline: none;
   transition: border-color .15s;
   width: 100%;
@@ -304,14 +320,54 @@ html, body {
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 8px 10px;
+  padding: 5px 8px;
   font-size: 12px;
   color: var(--text-dim);
   white-space: nowrap;
   text-align: center;
-  min-width: 76px;
+  min-width: 72px;
   font-variant-numeric: tabular-nums;
-  margin-bottom: 1px;
+}
+
+/* Stack hai badge Target / Actual dọc theo chiều đứng */
+.speed-badges {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.speed-badge-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.speed-badge-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-dim);
+  min-width: 36px;
+  flex-shrink: 0;
+}
+
+/* Actual Speed badge — highlight khi có dữ liệu odom */
+.actual-speed-badge {
+  color: var(--accent);
+  border-color: rgba(0, 200, 150, 0.3);
+  background: rgba(0, 200, 150, 0.06);
+  transition: color .2s, border-color .2s;
+}
+.actual-speed-badge.stale {
+  color: var(--warn);
+  border-color: rgba(245, 158, 11, 0.3);
+  background: rgba(245, 158, 11, 0.05);
+}
+.actual-speed-badge.no-data {
+  color: var(--text-dim);
+  border-color: var(--border);
+  background: var(--surface2);
 }
 
 /* Feedback & Status */
@@ -352,21 +408,7 @@ html, body {
 
 .btn-action { width: 100%; padding: 9px 0; margin-top: 6px; background: var(--accent); color: #0d1117; }
 
-/* Căn chỉnh 2 nút Send có cùng kích thước và thẳng hàng với các input */
-#btnSendGoal, #btnSendSpeed { 
-  width: 130px; 
-  padding: 8px 16px; 
-  margin-top: 0; 
-  margin-bottom: 1px; 
-}
-
 .btn-estop { width: 100%; padding: 9px 0; background: var(--danger); color: #fff; letter-spacing: .03em; }
-
-/* Nút E-STOP được thêm margin để cách đều với dòng speed-row ở trên */
-#btnStop {
-  margin-top: 8px;
-  margin-bottom: 4px;
-}
 
 .btn-action:hover:not(:disabled), .btn-connect:hover { background: var(--accent-d); }
 .btn-estop:hover:not(:disabled) { background: var(--danger-d); }
@@ -830,3 +872,70 @@ html, body {
   transition: background .15s, border-color .15s;
 }
 .btn-file-pick:hover { background: var(--border); }
+/* ── Navigation card (gộp Goal + Speed) ─────────────────────────────────── */
+.card-navigation .nav-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 100px;
+  gap: 4px 10px;
+  align-items: center;
+}
+
+/* Hàng label */
+.card-navigation .nav-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* Nút Go và STOP — cùng chiều cao với field-input (36px) */
+.btn-go,
+.card-navigation .btn-estop {
+  width: 100%;
+  height: 36px;
+  border: none;
+  border-radius: 7px;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: filter .15s;
+  letter-spacing: .06em;
+}
+
+.btn-go {
+  background: var(--accent);
+  color: #0d1117;
+}
+.btn-go:hover  { filter: brightness(1.15); }
+.btn-go:active { filter: brightness(0.9);  }
+
+.card-navigation .btn-estop {
+  background: var(--danger);
+  color: #fff;
+  padding: 0;
+}
+.card-navigation .btn-estop:hover  { background: var(--danger-d); }
+.card-navigation .btn-estop:active { transform: scale(.98); }
+
+/* Badge actual speed — khớp chiều cao với field-input */
+.actual-speed-display {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  background: var(--surface2);
+  border: 1px solid rgba(0,200,150,.3);
+  border-radius: 6px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  width: 100%;
+}
+.actual-speed-display.stale   { color: var(--warn);     border-color: rgba(245,158,11,.3); }
+.actual-speed-display.no-data { color: var(--text-dim); border-color: var(--border);       }
+
+/* Feedback navigation */
+.card-navigation .nav-feedback-row {
+  margin-top: 6px;
+}

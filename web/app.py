@@ -1,17 +1,20 @@
 #!/usr/bin/env python3
+import json
 import math
 import os
 import re
 import threading
+import time
 
-from flask import Flask, jsonify, render_template, request, send_from_directory
+from flask import Flask, jsonify, render_template, request, send_from_directory, Response, stream_with_context
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
 # ── Cấu hình thư mục ──────────────────────────────────────────────────────────
-BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
-MAPS_DIR    = os.path.join(BASE_DIR, 'maps')
+BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
+MAPS_DIR      = os.path.join(BASE_DIR, 'maps')
+TRACKING_LOG  = os.path.join(BASE_DIR, 'livetracking.log')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
 
 ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'}
@@ -29,6 +32,7 @@ try:
     from geometry_msgs.msg import PoseStamped
     from visualization_msgs.msg import MarkerArray
     from std_msgs.msg import Float64
+    from nav_msgs.msg import Odometry
     ROS_AVAILABLE = True
 except ImportError:
     pass
@@ -54,7 +58,10 @@ if ROS_AVAILABLE:
                 speed_qos,
             )
 
-            road_qos = QoSProfile(depth=10)
+            road_qos = QoSProfile(
+                depth=1,
+                durability=DurabilityPolicy.VOLATILE,
+            )
             self.road_sub = self.create_subscription(
                 MarkerArray,
                 'carla_road_network',
@@ -64,11 +71,80 @@ if ROS_AVAILABLE:
 
             self._markers = []
             self._markers_lock = threading.Lock()
+
+            # ── Vehicle marker subscriber (/carla/markers) ─────────────────
+            # Nguồn chính: vị trí + heading, publish liên tục kể cả khi đứng yên
+            self._vehicle_marker      = None
+            self._vehicle_marker_lock = threading.Lock()
+            self.vehicle_marker_sub = self.create_subscription(
+                MarkerArray,
+                '/carla/markers',
+                self._vehicle_marker_callback,
+                1,
+            )
+
+            # ── Odometry subscriber ────────────────────────────────────────
+            # Chỉ dùng để lấy tốc độ (twist.linear); pose lấy từ /carla/markers
+            self._odom_speed      = None   # (vx, vy, vz)
+            self._odom_speed_lock = threading.Lock()
+            self.odom_sub = self.create_subscription(
+                Odometry,
+                f'/carla/{self.role_name}/odometry',
+                self._odom_callback,
+                1,
+            )
+
             self.get_logger().info('RobotROSNode started.')
 
         def _road_callback(self, msg: MarkerArray):
             with self._markers_lock:
                 self._markers = list(msg.markers)
+
+        def _vehicle_marker_callback(self, msg: MarkerArray):
+            """Lưu marker đầu tiên — đó là xe hero. Ghi vị trí ra livetracking.log."""
+            if not msg.markers:
+                return
+            marker = msg.markers[0]
+            with self._vehicle_marker_lock:
+                self._vehicle_marker = marker
+
+            # Ghi log vị trí thời gian thực
+            p = marker.pose.position
+            o = marker.pose.orientation
+            ts = time.strftime('%Y-%m-%d %H:%M:%S')
+            line = f"{ts} | x={p.x:.4f} y={p.y:.4f} z={p.z:.4f} | qx={o.x:.6f} qy={o.y:.6f} qz={o.z:.6f} qw={o.w:.6f}\n"
+            try:
+                with open(TRACKING_LOG, 'a') as f:
+                    f.write(line)
+            except Exception as e:
+                self.get_logger().warn(f'livetracking.log write error: {e}')
+
+        def _odom_callback(self, msg: Odometry):
+            """Chỉ lưu twist.linear để tính tốc độ."""
+            l = msg.twist.twist.linear
+            with self._odom_speed_lock:
+                self._odom_speed = (l.x, l.y, l.z)
+
+        def get_odom(self):
+            """Trả về dict tracking:
+            - pose từ /carla/markers (luôn có, kể cả khi đứng yên)
+            - tốc độ từ /carla/hero/odometry (0.0 nếu chưa có)
+            """
+            with self._vehicle_marker_lock:
+                if self._vehicle_marker is None:
+                    return None
+                p = self._vehicle_marker.pose.position
+                o = self._vehicle_marker.pose.orientation
+
+            with self._odom_speed_lock:
+                spd = self._odom_speed
+
+            vx, vy, vz = spd if spd is not None else (0.0, 0.0, 0.0)
+            return {
+                'x':  p.x,  'y':  p.y,  'z':  p.z,
+                'qx': o.x,  'qy': o.y,  'qz': o.z, 'qw': o.w,
+                'vx': vx,   'vy': vy,   'vz': vz,
+            }
 
         def _find_nearest_marker(self, x: float, y: float):
             with self._markers_lock:
@@ -276,6 +352,54 @@ def api_load_map(map_id: int):
 
 # ── Navigation API ─────────────────────────────────────────────────────────────
 
+@app.route('/api/ros-status', methods=['GET'])
+def api_ros_status():
+    """
+    Kiểm tra /carla_ros_bridge node có đang chạy không.
+    Browser poll endpoint này định kỳ để hiện trạng thái Connected/Disconnected.
+    """
+    if not ROS_AVAILABLE or _ros_node is None:
+        return jsonify({'ok': True, 'running': False, 'reason': 'ROS node not initialized'})
+    try:
+        node_names = _ros_node.get_node_names()
+        running = 'carla_ros_bridge' in node_names
+        return jsonify({'ok': True, 'running': running, 'nodes': node_names})
+    except Exception as e:
+        return jsonify({'ok': True, 'running': False, 'reason': str(e)})
+
+
+@app.route('/api/odom', methods=['GET'])
+def api_odom():
+    """Trả về odom mới nhất từ /carla/hero/odometry."""
+    if _ros_node is None:
+        return jsonify({'ok': False, 'error': 'ROS node not running'}), 503
+    data = _ros_node.get_odom()
+    if data is None:
+        return jsonify({'ok': False, 'error': 'No odom data yet'}), 204
+    return jsonify({'ok': True, **data})
+
+@app.route('/api/odom/stream')
+def api_odom_stream():
+    """SSE endpoint — push odom liên tục ngay khi có data mới, không cần client poll."""
+    def generate():
+        last_sent = None
+        while True:
+            if _ros_node is not None:
+                data = _ros_node.get_odom()
+                if data is not None and data != last_sent:
+                    last_sent = data
+                    yield f"data: {json.dumps(data)}\n\n"
+            time.sleep(0.02)   # kiểm tra mỗi 20ms (~50Hz), gửi chỉ khi có data mới
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control':    'no-cache',
+            'X-Accel-Buffering': 'no',   # tắt nginx buffer nếu có proxy phía trước
+        }
+    )
+
 @app.route('/api/send-goal', methods=['POST'])
 def api_send_goal():
     data = request.get_json(force=True, silent=True) or {}
@@ -318,6 +442,58 @@ def api_send_speed():
     return jsonify({'ok': True, 'ros': False, 'speed_kmh': speed_kmh, 'speed_mps': speed_mps})
 
 
+@app.route('/api/navigate', methods=['POST'])
+def api_navigate():
+    """
+    Gộp goal + speed vào 1 lần gọi.
+    Body JSON:
+      { "x": float, "y": float, "speed_kmh": float }   → Go
+      { "stop": true }                                  → STOP (speed=0, goal=(0,0,0))
+    """
+    data = request.get_json(force=True, silent=True) or {}
+
+    # ── STOP ──────────────────────────────────────────────────────────────────
+    if data.get('stop'):
+        result = {'ok': True, 'stopped': True}
+        if _ros_node is not None:
+            try:
+                _ros_node.send_speed(0.0)
+                # Gửi goal tại vị trí hiện tại để hủy đích cũ
+                odom = _ros_node.get_odom()
+                cx = odom['x'] if odom else 0.0
+                cy = odom['y'] if odom else 0.0
+                _ros_node.send_goal(cx, cy)
+                result['ros'] = True
+            except Exception as e:
+                result['ros_error'] = str(e)
+        return jsonify(result)
+
+    # ── GO ────────────────────────────────────────────────────────────────────
+    try:
+        x         = float(data['x'])
+        y         = float(data['y'])
+        speed_kmh = float(data['speed_kmh'])
+    except (KeyError, ValueError, TypeError):
+        return jsonify({'ok': False, 'error': 'Cần cung cấp x, y (số) và speed_kmh (số)'}), 400
+
+    if speed_kmh < 0:
+        return jsonify({'ok': False, 'error': 'Tốc độ phải >= 0'}), 400
+
+    result = {'ok': True, 'x': x, 'y': y, 'speed_kmh': speed_kmh}
+
+    if _ros_node is not None:
+        try:
+            snap      = _ros_node.send_goal(x, y)
+            speed_mps = _ros_node.send_speed(speed_kmh)
+            result.update({'ros': True, 'speed_mps': speed_mps, **snap})
+        except Exception as e:
+            return jsonify({'ok': False, 'error': str(e)}), 500
+    else:
+        result.update({'ros': False, 'snapped': False, 'speed_mps': round(speed_kmh / 3.6, 4)})
+
+    return jsonify(result)
+
+
 # ── Bootstrap ──────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     os.makedirs(MAPS_DIR, exist_ok=True)
@@ -325,4 +501,19 @@ if __name__ == '__main__':
     if ROS_AVAILABLE and os.environ.get('WERKZEUG_RUN_MAIN') != 'false':
         _start_ros()
 
-    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)
+    # Bọc quá trình chạy Web trong khối try...finally để bắt sự kiện tắt ứng dụng
+    try:
+        app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False, threaded=True)
+    finally:
+        # Đoạn code này LUÔN LUÔN được chạy khi bạn bấm Ctrl+C hoặc Web bị tắt
+        if ROS_AVAILABLE:
+            print('\n[Web] Đang đóng Web Server...')
+            print('[ROS] Đang giải phóng bộ nhớ đệm FastDDS và hủy Node ngầm...')
+            try:
+                if _ros_executor is not None:
+                    _ros_executor.shutdown()  # Bước 1: Ra lệnh dừng vòng lặp spin() đang chạy ngầm
+                if rclpy.ok():
+                    rclpy.shutdown()          # Bước 2: Tắt hẳn hệ thống rclpy, dọn sạch Shared Memory
+                print('[ROS] Đã dọn dẹp gọn gàng và đóng sạch sẽ!')
+            except Exception as e:
+                print(f'[ROS] Có lỗi xảy ra khi dọn dẹp: {e}')

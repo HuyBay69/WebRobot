@@ -1,7 +1,6 @@
 'use strict';
 
 // ── DOM ───────────────────────────────────────────────────────────────────────
-const wsHostInput    = document.getElementById('wsHost');
 const btnConnect     = document.getElementById('btnConnect');
 const ROLE_NAME      = 'hero';
 const connDot        = document.getElementById('connDot');
@@ -15,13 +14,8 @@ const selectedWaypointPin = document.getElementById('selectedWaypointPin');
 const goalX          = document.getElementById('goalX');
 const goalY          = document.getElementById('goalY');
 const btnSendGoal    = document.getElementById('btnSendGoal');
-const goalFeedback   = document.getElementById('goalFeedback');
-
 const speedKmh       = document.getElementById('speedKmh');
-const speedMpsEl     = document.getElementById('speedMps');
-const btnSendSpeed   = document.getElementById('btnSendSpeed');
 const btnStop        = document.getElementById('btnStop');
-const speedFeedback  = document.getElementById('speedFeedback');
 
 const logBody        = document.getElementById('logBody');
 const locationNameError = document.getElementById('locationNameError');
@@ -32,11 +26,14 @@ let mapHud        = document.getElementById('mapHud');
 let mapHint       = document.getElementById('mapHint');
 let mapScaleLabel = document.getElementById('mapScaleLabel');
 
+const carIcon      = document.getElementById('carIcon');
+const actualSpeedEl = document.getElementById('actualSpeed');
+
 // ── State ─────────────────────────────────────────────────────────────────────
-let ros       = null;
+let ros       = null;   // giữ lại để không break các chỗ check `connected && goalPub`
 let goalPub   = null;
 let speedPub  = null;
-let connected = false;
+let connected = false;  // alias rosRunning, giữ để sendGoal/sendSpeed fallback đúng
 
 let waypoints        = [];
 let waypointMetadata = null;
@@ -50,6 +47,13 @@ let mapDrag = { active: false, startX: 0, startY: 0, origX: 0, origY: 0 };
 let mapBaseBounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
 let mapBaseFit    = { width: 0, height: 0 };
 let selectedWaypoint = null;
+
+// ── Live Tracking state ───────────────────────────────────────────────────────
+let odomEventSource  = null;  // EventSource handle cho SSE odom stream
+let odomPollInterval = null;  // giữ lại để không break code cũ (unused)
+let lastOdomPos      = null;   // { pixel_x, pixel_y } trong ảnh gốc
+let lastOdomYawDeg   = 0;      // góc hiện tại (degrees) để rotate icon
+let odomStaleTimer   = null;   // timeout để đánh dấu dữ liệu cũ
 
 const MIN_ZOOM_STATIC = 0.1;
 const MAX_ZOOM_STATIC = 2.0;
@@ -207,6 +211,7 @@ function updateCanvasSize() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   drawOverlay();
   updateSelectedPin();
+  updateCarIcon();
 }
 
 function updateSelectedPin() {
@@ -219,6 +224,86 @@ function updateSelectedPin() {
   selectedWaypointPin.style.left    = `${x}px`;
   selectedWaypointPin.style.top     = `${y}px`;
   selectedWaypointPin.style.display = 'block';
+}
+
+// ── Live Tracking helpers ─────────────────────────────────────────────────────
+
+/**
+ * Chuyển Quaternion → Yaw (radians).
+ * Công thức: yaw = atan2(2(wz + xy), 1 − 2(y² + z²))
+ */
+function quatToYawRad(q) {
+  const { x, y, z, w } = q;
+  return Math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z));
+}
+
+/**
+ * Chiếu tọa độ ROS (meters) → pixel trong ảnh gốc.
+ * Sau khi đảo Y trong waypoints.json (y_new = -y_ros):
+ *   pixel_x = (ros_x - min_x) * scale
+ *   pixel_y = (max_y - y_flipped) * scale  với y_flipped = -ros_y
+ *           = (max_y + ros_y) * scale
+ * Đã xác minh khớp pixel_y thực tế trong waypoints.json.
+ */
+function rosToPixel(rosX, rosY) {
+  if (!hasValidWaypointMetadata(waypointMetadata)) return null;
+  const m = waypointMetadata;
+  return {
+    pixel_x: (rosX - m.min_x) * m.scale,
+    pixel_y: (m.max_y - rosY) * m.scale,
+  };
+}
+
+/**
+ * Chuyển pixel gốc trong ảnh → vị trí tuyệt đối (px) trên màn hình,
+ * có tính pan/zoom hiện tại qua overlayTransform.
+ */
+function imagePixelToScreen(pixel_x, pixel_y) {
+  return {
+    screenX: pixel_x * overlayTransform.scale + overlayTransform.x,
+    screenY: pixel_y * overlayTransform.scale + overlayTransform.y,
+  };
+}
+
+/** Cập nhật vị trí và góc xoay #carIcon từ lastOdomPos / lastOdomYawDeg. */
+function updateCarIcon() {
+  if (!lastOdomPos || !mapHasImage || !hasValidWaypointMetadata(waypointMetadata)) {
+    return;
+  }
+  const { screenX, screenY } = imagePixelToScreen(lastOdomPos.pixel_x, lastOdomPos.pixel_y);
+  carIcon.style.left      = `${screenX}px`;
+  carIcon.style.top       = `${screenY}px`;
+  // SVG mũi chỉ lên (−Y canvas) → khi yaw=0 (hướng trục X ROS = phải) cần +90°
+  carIcon.style.transform = `translate(-50%, -50%) rotate(${lastOdomYawDeg + 90}deg)`;
+}
+
+/** Xử lý message từ /carla/hero/odometry */
+function handleOdomMessage(msg) {
+  // ── Vị trí ──
+  const rosX = msg.pose.pose.position.x;
+  const rosY = msg.pose.pose.position.y;
+  const pixel = rosToPixel(rosX, rosY);
+  if (pixel) {
+    lastOdomPos = pixel;
+    carIcon.style.display = 'block';
+    updateCarIcon();
+  }
+
+  // ── Góc quay (heading) ──
+  const q = msg.pose.pose.orientation;
+  const yawRad = quatToYawRad(q);
+  // ROS yaw: +CCW. Pixel Y xuống dưới → flip dấu để xoay đúng chiều trên màn hình
+  lastOdomYawDeg = -(yawRad * 180 / Math.PI);
+  updateCarIcon();
+
+  // ── Tốc độ thực ──
+  const lx = msg.twist.twist.linear.x;
+  const ly = msg.twist.twist.linear.y;
+  const lz = msg.twist.twist.linear.z;
+  const speedMps = Math.sqrt(lx * lx + ly * ly + lz * lz);
+  const speedKmhActual = speedMps * 3.6;
+  actualSpeedEl.textContent = `${speedKmhActual.toFixed(1)} km/h`;
+  actualSpeedEl.classList.remove('stale', 'no-data');
 }
 
 function drawOverlay() {
@@ -313,6 +398,7 @@ function handleMapWheel(event) {
   updateMapHud();
   drawOverlay();
   updateSelectedPin();
+  updateCarIcon();
 }
 
 function handleMapPointerDown(event) {
@@ -345,6 +431,7 @@ function handleMapPointerMove(event) {
   setMapTransform();
   drawOverlay();
   updateSelectedPin();
+  updateCarIcon();
   updateMapHud();
 }
 
@@ -377,8 +464,8 @@ function handleWaypointClick(event) {
   if (typeof hit.x === 'number' && typeof hit.y === 'number') {
     goalX.value = hit.x.toFixed(3);
     goalY.value = hit.y.toFixed(3);
-    goalFeedback.textContent = 'Chọn vị trí thành công. Nhấn Send Goal để gửi.';
-    goalFeedback.className   = 'feedback ok';
+    document.getElementById('navFeedback').textContent = 'Chọn vị trí thành công. Nhấn Send Goal để gửi.';
+    document.getElementById('navFeedback').className   = 'feedback ok';
     addLog('info', `Waypoint selected → x=${hit.x.toFixed(3)}, y=${hit.y.toFixed(3)}`);
   }
 }
@@ -754,227 +841,187 @@ async function autoLoadFirstMap() {
   }
 }
 
-// ── ROS Connection ────────────────────────────────────────────────────────────
+// ── ROS Status Polling ────────────────────────────────────────────────────────
+// Không dùng WebSocket/rosbridge. Browser poll /api/ros-status định kỳ
+// để kiểm tra /carla_ros_bridge node có alive không.
+
+let rosStatusInterval = null;
+let rosRunning        = false;   // trạng thái hiện tại
+
 function setConnectedUI(state) {
-  connected = state === 'connected';
+  rosRunning = state === 'connected';
 
   connDot.className = 'conn-dot ' +
     (state === 'connected' ? 'connected' : state === 'connecting' ? 'connecting' : '');
 
   if (state === 'connected') {
     connStatus.textContent = 'Connected';
-    btnConnect.textContent = 'Disconnect';
-    btnConnect.classList.add('connected');
-    btnConnect.disabled = false;
   } else if (state === 'connecting') {
-    connStatus.textContent = 'Connecting…';
-    btnConnect.disabled = true;
+    connStatus.textContent = 'Checking…';
   } else {
     connStatus.textContent = 'Disconnected';
-    btnConnect.textContent = 'Connect ROS';
-    btnConnect.classList.remove('connected');
-    btnConnect.disabled = false;
   }
 }
 
-function connectROS() {
-  const host = wsHostInput.value.trim() || 'localhost:9090';
-  setConnectedUI('connecting');
-  addLog('info', `Connecting to ws://${host} …`);
-
-  ros = new ROSLIB.Ros({ url: `ws://${host}` });
-
-  ros.on('connection', () => {
-    addLog('info', `Connected to ROS — role: ${ROLE_NAME}`);
-    setConnectedUI('connected');
-
-    goalPub = new ROSLIB.Topic({
-      ros,
-      name: '/goal_pose',
-      messageType: 'geometry_msgs/PoseStamped',
-    });
-
-    speedPub = new ROSLIB.Topic({
-      ros,
-      name: `/carla/${ROLE_NAME}/target_speed`,
-      messageType: 'std_msgs/Float64',
-    });
-  });
-
-  ros.on('error', err => {
-    addLog('error', `Connection error: ${err}`);
+async function checkRosStatus() {
+  try {
+    const res  = await fetch('/api/ros-status');
+    const data = await res.json();
+    if (data.running) {
+      if (!rosRunning) {
+        setConnectedUI('connected');
+        addLog('info', 'carla_ros_bridge detected — ROS online');
+        startOdomPolling();
+      }
+    } else {
+      if (rosRunning) {
+        addLog('warn', 'carla_ros_bridge not found — ROS offline');
+        stopOdomPolling();
+      }
+      setConnectedUI('disconnected');
+    }
+  } catch {
+    if (rosRunning) {
+      addLog('error', 'Không thể kiểm tra trạng thái ROS');
+      stopOdomPolling();
+    }
     setConnectedUI('disconnected');
-  });
-
-  ros.on('close', () => {
-    addLog('warn', 'Disconnected from ROS — chuyển sang chế độ API');
-    goalPub  = null;
-    speedPub = null;
-    setConnectedUI('disconnected');
-  });
+  }
 }
 
-function disconnectROS() {
-  if (ros) { ros.close(); ros = null; }
+function startRosStatusPolling() {
+  checkRosStatus();   // check ngay lập tức
+  if (rosStatusInterval) return;
+  rosStatusInterval = setInterval(checkRosStatus, 3000);
 }
 
+// ── Odom SSE Stream ───────────────────────────────────────────────────────────
+function startOdomPolling() {
+  if (odomEventSource) return;
+  odomEventSource = new EventSource('/api/odom/stream');
+
+  odomEventSource.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      handleOdomMessage({
+        pose: {
+          pose: {
+            position:    { x: data.x,  y: data.y,  z: data.z  },
+            orientation: { x: data.qx, y: data.qy, z: data.qz, w: data.qw },
+          }
+        },
+        twist: { twist: { linear: { x: data.vx, y: data.vy, z: data.vz } } },
+      });
+    } catch { /* bỏ qua frame lỗi */ }
+  };
+
+  odomEventSource.onerror = () => {
+    // EventSource tự reconnect sau 3s — không cần xử lý thêm
+    addLog('warn', 'Odom SSE: mất kết nối, đang thử lại…');
+  };
+
+  addLog('info', 'Odom SSE stream connected');
+}
+
+function stopOdomPolling() {
+  if (odomEventSource) {
+    odomEventSource.close();
+    odomEventSource = null;
+  }
+  clearTimeout(odomStaleTimer);
+  lastOdomPos    = null;
+  lastOdomYawDeg = 0;
+  carIcon.style.display     = 'none';
+  actualSpeedEl.textContent = '— km/h';
+  actualSpeedEl.classList.remove('stale');
+  actualSpeedEl.classList.add('no-data');
+  addLog('info', 'Odom SSE stream closed');
+}
+
+// Nút "Check ROS" — trigger check thủ công ngay lập tức
 btnConnect.addEventListener('click', () => {
-  if (connected) disconnectROS();
-  else connectROS();
+  addLog('info', 'Manual check ROS status…');
+  setConnectedUI('connecting');
+  checkRosStatus();
 });
 
 // ── Gửi tọa độ ───────────────────────────────────────────────────────────────
-async function sendGoal() {
-  const x = parseFloat(goalX.value);
-  const y = parseFloat(goalY.value);
+// ── Navigate (gộp goal + speed) ──────────────────────────────────────────────
+const navFeedback = document.getElementById('navFeedback');
+
+function setNavFeedback(msg, type = '', timeout = 5000) {
+  navFeedback.textContent = msg;
+  navFeedback.className   = `feedback${type ? ' ' + type : ''}`;
+  if (timeout) setTimeout(() => {
+    if (navFeedback.textContent === msg) {
+      navFeedback.textContent = 'Chọn một vị trí trên bản đồ hoặc nhập toạ độ';
+      navFeedback.className   = 'feedback';
+    }
+  }, timeout);
+}
+
+async function navigate() {
+  const x   = parseFloat(goalX.value);
+  const y   = parseFloat(goalY.value);
+  const kmh = parseFloat(speedKmh.value);
 
   if (isNaN(x) || isNaN(y)) {
-    goalFeedback.textContent = 'X và Y phải là số hợp lệ.';
-    goalFeedback.className   = 'feedback err';
+    setNavFeedback('X và Y phải là số hợp lệ.', 'err', 4000);
     return;
   }
-
-  if (connected && goalPub) {
-    goalPub.publish(new ROSLIB.Message({
-      header: { frame_id: 'map' },
-      pose: { position: { x, y, z: 0.0 }, orientation: { x: 0.0, y: 0.0, z: 0.0, w: 1.0 } },
-    }));
-    goalFeedback.textContent = `Đã gửi tọa độ (${x.toFixed(3)},${y.toFixed(3)}) thành công.`;
-    goalFeedback.className   = 'feedback ok';
-    setTimeout(() => {
-      if (goalFeedback.className === 'feedback ok') {
-        goalFeedback.textContent = 'Chọn một vị trí trên bản đồ';
-        goalFeedback.className   = 'feedback';
-      }
-    }, 5000);
-    addLog('info', `Goal [ROS] → x=${x.toFixed(3)}, y=${y.toFixed(3)}`);
+  if (isNaN(kmh) || kmh < 0) {
+    setNavFeedback('Tốc độ phải là số >= 0.', 'err', 4000);
     return;
   }
 
   btnSendGoal.disabled = true;
   try {
-    const res  = await fetch('/api/send-goal', {
-      method: 'POST',
+    const res  = await fetch('/api/navigate', {
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ x, y }),
+      body:    JSON.stringify({ x, y, speed_kmh: kmh }),
     });
     const data = await res.json();
     if (data.ok) {
-      let detail = `x=${x.toFixed(3)}, y=${y.toFixed(3)}`;
-      if (data.snapped) detail += ` → waypoint (${data.wx.toFixed(3)}, ${data.wy.toFixed(3)}), dist=${data.dist} m`;
-      const via = data.ros ? ' → ROS' : ' (no ROS)';
-      goalFeedback.textContent = `Đã gửi tọa độ (${x.toFixed(3)},${y.toFixed(3)}) thành công.`;
-      goalFeedback.className   = 'feedback ok';
-      setTimeout(() => {
-        if (goalFeedback.className === 'feedback ok') {
-          goalFeedback.textContent = 'Chọn một vị trí trên bản đồ';
-          goalFeedback.className   = 'feedback';
-        }
-      }, 5000);
-      addLog('info', `Goal [API${via}] → ${detail}`);
+      let detail = `(${x.toFixed(2)}, ${y.toFixed(2)}) — ${kmh.toFixed(1)} km/h`;
+      if (data.snapped) detail += ` → snap ${data.dist} m`;
+      setNavFeedback(`✓ Go: ${detail}`, 'ok');
+      addLog('info', `Navigate → x=${x.toFixed(3)}, y=${y.toFixed(3)}, ${kmh.toFixed(1)} km/h`);
     } else {
-      goalFeedback.textContent = data.error || 'Server error';
-      goalFeedback.className   = 'feedback err';
-      addLog('error', `Goal failed: ${data.error}`);
+      setNavFeedback(data.error || 'Server error', 'err');
+      addLog('error', `Navigate failed: ${data.error}`);
     }
   } catch {
-    goalFeedback.textContent = 'Không thể kết nối server';
-    goalFeedback.className   = 'feedback err';
-    addLog('error', 'Goal: không thể kết nối server');
+    setNavFeedback('Không thể kết nối server', 'err');
+    addLog('error', 'Navigate: không thể kết nối server');
   } finally {
     btnSendGoal.disabled = false;
   }
 }
 
-btnSendGoal.addEventListener('click', sendGoal);
-[goalX, goalY].forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') sendGoal(); }));
-
-// ── Gửi tốc độ ───────────────────────────────────────────────────────────────
-async function sendSpeed(kmh) {
-  if (connected && speedPub) {
-    const mps = kmh / 3.6;
-    speedPub.publish(new ROSLIB.Message({ data: mps }));
-    speedFeedback.textContent = `Đã gửi tốc độ ${kmh.toFixed(2)} km/h thành công.`;
-    speedFeedback.className   = 'feedback ok';
-    setTimeout(() => {
-      if (speedFeedback.className === 'feedback ok') {
-        speedFeedback.textContent = 'Nhập tốc độ cần gửi';
-        speedFeedback.className   = 'feedback';
-      }
-    }, 5000);
-    addLog('info', `Speed [ROS] → ${kmh.toFixed(2)} km/h = ${mps.toFixed(3)} m/s`);
-    return;
-  }
-
-  btnSendSpeed.disabled = true;
-  btnStop.disabled      = true;
+async function stopVehicle() {
+  btnStop.disabled = true;
   try {
-    const res  = await fetch('/api/send-speed', {
-      method: 'POST',
+    const res  = await fetch('/api/navigate', {
+      method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ speed_kmh: kmh }),
+      body:    JSON.stringify({ stop: true }),
     });
     const data = await res.json();
-    if (data.ok) {
-      const via = data.ros ? ' → ROS' : ' (no ROS)';
-      speedFeedback.textContent = `Đã gửi tốc độ ${kmh.toFixed(2)} km/h thành công.`;
-      speedFeedback.className   = 'feedback ok';
-      setTimeout(() => {
-        if (speedFeedback.className === 'feedback ok') {
-          speedFeedback.textContent = 'Nhập tốc độ cần gửi';
-          speedFeedback.className   = 'feedback';
-        }
-      }, 5000);
-      addLog('info', `Speed [API${via}] → ${kmh.toFixed(2)} km/h = ${data.speed_mps} m/s`);
-    } else {
-      speedFeedback.textContent = data.error || 'Server error';
-      speedFeedback.className   = 'feedback err';
-      addLog('error', `Speed failed: ${data.error}`);
-    }
+    setNavFeedback('⚠ STOP — xe đã dừng', 'err');
+    addLog('warn', 'STOP — speed=0, goal cancelled');
   } catch {
-    speedFeedback.textContent = 'Không thể kết nối server';
-    speedFeedback.className   = 'feedback err';
-    addLog('error', 'Speed: không thể kết nối server');
+    setNavFeedback('Không thể kết nối server', 'err');
   } finally {
-    btnSendSpeed.disabled = false;
-    btnStop.disabled      = false;
+    btnStop.disabled = false;
   }
 }
 
-btnSendSpeed.addEventListener('click', () => {
-  const v = parseFloat(speedKmh.value);
-  if (isNaN(v) || v < 0) {
-    speedFeedback.textContent = 'Speed phải là số >= 0.';
-    speedFeedback.className   = 'feedback err';
-    return;
-  }
-  sendSpeed(v);
-});
-
-speedKmh.addEventListener('keydown', e => { if (e.key === 'Enter') btnSendSpeed.click(); });
-
-btnStop.addEventListener('click', async () => {
-  speedKmh.value         = '0';
-  speedMpsEl.textContent = '0.000 m/s';
-  await sendSpeed(0);
-  if (connected) {
-    speedFeedback.textContent = '⚠ Emergency stop sent!';
-    speedFeedback.className   = 'feedback err';
-    setTimeout(() => {
-      if (speedFeedback.textContent === '⚠ Emergency stop sent!') {
-        speedFeedback.textContent = 'Nhập tốc độ cần gửi';
-        speedFeedback.className   = 'feedback';
-      }
-    }, 5000);
-  }
-  addLog('warn', 'EMERGENCY STOP — speed = 0');
-});
-
-// ── Tốc độ — sync m/s badge ──────────────────────────────────────────────────
-speedKmh.addEventListener('input', () => {
-  const v = parseFloat(speedKmh.value);
-  speedMpsEl.textContent = isNaN(v) ? '— m/s' : `${(v / 3.6).toFixed(3)} m/s`;
-});
+btnSendGoal.addEventListener('click', navigate);
+[goalX, goalY, speedKmh].forEach(el =>
+  el.addEventListener('keydown', e => { if (e.key === 'Enter') navigate(); })
+);
+btnStop.addEventListener('click', stopVehicle);
 
 // ── Lưu Địa Điểm ─────────────────────────────────────────────────────────────
 const btnSaveLocation   = document.getElementById('btnSaveLocation');
@@ -999,8 +1046,8 @@ function renderSavedLocations() {
       updateSelectedPin();
       goalX.value = loc.wp.x.toFixed(3);
       goalY.value = loc.wp.y.toFixed(3);
-      goalFeedback.textContent = `Đã chọn lại địa điểm: ${loc.name}`;
-      goalFeedback.className   = 'feedback ok';
+      document.getElementById('navFeedback').textContent = `Đã chọn lại địa điểm: ${loc.name}`;
+      document.getElementById('navFeedback').className   = 'feedback ok';
       addLog('info', `Đã chọn lại điểm lưu: ${loc.name}`);
     });
     savedLocationList.appendChild(li);
@@ -1054,3 +1101,4 @@ locationNameInput.addEventListener('input', () => { locationNameError.style.disp
 
 // ── Khởi động: auto-load bản đồ #1 ──────────────────────────────────────────
 autoLoadFirstMap();
+startRosStatusPolling();   // bắt đầu theo dõi ROS ngay khi trang load
