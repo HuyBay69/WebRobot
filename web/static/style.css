@@ -500,6 +500,31 @@ html, body {
 .log-row.warn  .log-pip { background: var(--warn); }
 .log-row.error .log-pip { background: var(--danger); }
 
+/* ── Log từ ROS node (bridge_check.py) — phân biệt với log web ────────────── */
+.log-row.ros {
+  background: rgba(99, 60, 180, 0.10);
+  border-left: 2px solid #7c4dff;
+  padding-left: 6px;
+}
+.log-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: #7c4dff;
+  color: #fff;
+  flex-shrink: 0;
+  margin-top: 2px;
+  white-space: nowrap;
+  line-height: 1.5;
+}
+.log-row.ros.info  .log-pip { background: #7c4dff; }
+.log-row.ros.warn  .log-pip { background: var(--warn); }
+.log-row.ros.error .log-pip { background: var(--danger); }
+.log-row.ros .log-text { color: #c9b8ff; }
+
 /* ==========================================================================
    7. UPLOAD MODAL
    ========================================================================== */

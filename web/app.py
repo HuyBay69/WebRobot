@@ -1,16 +1,25 @@
 #!/usr/bin/env python3
 import json
-import math
+import logging
 import os
-import queue
 import re
 import threading
 import time
 
-from flask import Flask, jsonify, render_template, request, send_from_directory, Response, stream_with_context, Response, stream_with_context
+from flask import Flask, jsonify, render_template, request, send_from_directory, Response, stream_with_context
 from werkzeug.utils import secure_filename
+from api_ros.ros_status_api import ros_status_bp, start_bridge_checker, stop_bridge_checker
+from api_ros.navigate_node import start_navigate_node, stop_navigate_node, send_navigate_command
 
 app = Flask(__name__)
+app.register_blueprint(ros_status_bp)
+
+# ── Ẩn log poll /api/ros/status (spam mỗi 6s) ────────────────────────────────
+class _SuppressRosStatusLog(logging.Filter):
+    def filter(self, record):
+        return 'GET /api/ros/status' not in record.getMessage()
+
+logging.getLogger('werkzeug').addFilter(_SuppressRosStatusLog())
 
 # ── Cấu hình thư mục ──────────────────────────────────────────────────────────
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
@@ -20,201 +29,10 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
 
 ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'}
 
-# ── Optional ROS integration ───────────────────────────────────────────────────
-ROS_AVAILABLE = False
-_ros_node     = None
-_ros_executor = None
-_ros_thread   = None
-
-try:
-    import rclpy
-    from rclpy.node import Node
-    from rclpy.qos import QoSProfile, DurabilityPolicy
-    from geometry_msgs.msg import PoseStamped
-    from visualization_msgs.msg import MarkerArray
-    from std_msgs.msg import Float64
-    from nav_msgs.msg import Odometry
-    ROS_AVAILABLE = True
-except ImportError:
-    pass
-
-
-if ROS_AVAILABLE:
-    class RobotROSNode(Node):
-        def __init__(self):
-            super().__init__('robot_web_node')
-
-            self.declare_parameter('role_name', 'hero')
-            self.role_name = (
-                self.get_parameter('role_name').get_parameter_value().string_value
-            )
-
-            self.goal_pub = self.create_publisher(PoseStamped, '/goal_pose', 10)
-
-            speed_qos = QoSProfile(depth=10)
-            speed_qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
-            self.speed_pub = self.create_publisher(
-                Float64,
-                f'/carla/{self.role_name}/target_speed',
-                speed_qos,
-            )
-
-            road_qos = QoSProfile(
-                depth=1,
-                durability=DurabilityPolicy.VOLATILE,
-            )
-            self.road_sub = self.create_subscription(
-                MarkerArray,
-                'carla_road_network',
-                self._road_callback,
-                road_qos,
-            )
-
-            self._markers = []
-            self._markers_lock = threading.Lock()
-
-            # ── Vehicle marker subscriber (/carla/markers) ─────────────────
-            # Nguồn chính: vị trí + heading, publish liên tục kể cả khi đứng yên
-            self._vehicle_marker      = None
-            self._vehicle_marker_lock = threading.Lock()
-            self._odom_event          = threading.Event()   # báo SSE ngay khi có frame mới
-            self.vehicle_marker_sub   = self.create_subscription(
-                MarkerArray,
-                '/carla/markers',
-                self._vehicle_marker_callback,
-                1,
-            )
-
-            # ── Odometry subscriber ────────────────────────────────────────
-            # Chỉ lấy twist.linear (tốc độ); pose lấy từ /carla/markers
-            self._odom_speed      = None   # (vx, vy, vz)
-            self._odom_speed_lock = threading.Lock()
-            self.odom_sub = self.create_subscription(
-                Odometry,
-                f'/carla/{self.role_name}/odometry',
-                self._odom_callback,
-                1,
-            )
-
-            # ── Log writer thread (không block callback) ───────────────────
-            self._log_queue = queue.Queue()
-            threading.Thread(target=self._log_writer, daemon=True).start()
-
-            self.get_logger().info('RobotROSNode started.')
-
-        def _road_callback(self, msg: MarkerArray):
-            with self._markers_lock:
-                self._markers = list(msg.markers)
-
-        def _vehicle_marker_callback(self, msg: MarkerArray):
-            """Cập nhật vị trí + heading từ /carla/markers, push SSE ngay lập tức."""
-            if not msg.markers:
-                return
-            marker = msg.markers[0]
-            with self._vehicle_marker_lock:
-                self._vehicle_marker = marker
-            # Báo SSE có frame mới — không cần poll nữa
-            self._odom_event.set()
-            # Đẩy log vào queue để thread riêng ghi, không block callback
-            p = marker.pose.position
-            o = marker.pose.orientation
-            ts = time.strftime('%Y-%m-%d %H:%M:%S')
-            self._log_queue.put(
-                f"{ts} | x={p.x:.4f} y={p.y:.4f} z={p.z:.4f}"
-                f" | qx={o.x:.6f} qy={o.y:.6f} qz={o.z:.6f} qw={o.w:.6f}\n"
-            )
-
-        def _odom_callback(self, msg: Odometry):
-            """Chỉ lưu twist.linear để tính tốc độ."""
-            l = msg.twist.twist.linear
-            with self._odom_speed_lock:
-                self._odom_speed = (l.x, l.y, l.z)
-
-        def _log_writer(self):
-            """Thread riêng ghi livetracking.log — không block ROS callback."""
-            with open(TRACKING_LOG, 'a') as f:
-                while True:
-                    line = self._log_queue.get()
-                    f.write(line)
-                    f.flush()
-
-        def get_odom(self):
-            """Trả về dict tracking mới nhất:
-            - pose từ /carla/markers (luôn có, kể cả khi đứng yên)
-            - tốc độ từ /carla/hero/odometry (0.0 nếu xe đứng yên)
-            """
-            with self._vehicle_marker_lock:
-                if self._vehicle_marker is None:
-                    return None
-                p = self._vehicle_marker.pose.position
-                o = self._vehicle_marker.pose.orientation
-            with self._odom_speed_lock:
-                spd = self._odom_speed
-            vx, vy, vz = spd if spd is not None else (0.0, 0.0, 0.0)
-            return {
-                'x':  p.x,  'y':  p.y,  'z':  p.z,
-                'qx': o.x,  'qy': o.y,  'qz': o.z, 'qw': o.w,
-                'vx': vx,   'vy': vy,   'vz': vz,
-            }
-
-        def _find_nearest_marker(self, x: float, y: float):
-            with self._markers_lock:
-                if not self._markers:
-                    return None, None
-                nearest, min_dist = None, float('inf')
-                for m in self._markers:
-                    d = math.hypot(m.pose.position.x - x, m.pose.position.y - y)
-                    if d < min_dist:
-                        min_dist, nearest = d, m
-                return nearest, min_dist
-
-        def send_goal(self, x: float, y: float):
-            nearest, dist = self._find_nearest_marker(x, y)
-
-            msg = PoseStamped()
-            msg.header.frame_id = 'map'
-            msg.header.stamp = self.get_clock().now().to_msg()
-            msg.pose.orientation.w = 1.0
-
-            if nearest is not None:
-                msg.pose.position.x = nearest.pose.position.x
-                msg.pose.position.y = nearest.pose.position.y
-                msg.pose.position.z = nearest.pose.position.z
-                snap = {
-                    'snapped': True,
-                    'wx': nearest.pose.position.x,
-                    'wy': nearest.pose.position.y,
-                    'dist': round(dist, 4),
-                }
-            else:
-                msg.pose.position.x = x
-                msg.pose.position.y = y
-                msg.pose.position.z = 0.0
-                snap = {'snapped': False}
-
-            self.goal_pub.publish(msg)
-            return snap
-
-        def send_speed(self, speed_kmh: float):
-            speed_mps = speed_kmh / 3.6
-            msg = Float64()
-            msg.data = speed_mps
-            self.speed_pub.publish(msg)
-            return round(speed_mps, 4)
-
-
-def _start_ros():
-    global _ros_node, _ros_executor, _ros_thread
-    try:
-        rclpy.init()
-        _ros_node = RobotROSNode()
-        _ros_executor = rclpy.executors.SingleThreadedExecutor()
-        _ros_executor.add_node(_ros_node)
-        _ros_thread = threading.Thread(target=_ros_executor.spin, daemon=True)
-        _ros_thread.start()
-        print('[ROS] Node started successfully.')
-    except Exception as e:
-        print(f'[ROS] Failed to start node: {e}')
+# ── ROS nodes chạy ngoài (subprocess) ────────────────────────────────────────
+# bridge_check_node.py : kiểm tra carla_ros_bridge, push heartbeat lên web
+# navigate_node.py     : nhận lệnh GO/STOP từ stdin, publish ROS topics
+# odom_node.py         : subscribe /carla/markers + odometry, push SSE (xem bên dưới)
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -362,179 +180,49 @@ def api_load_map(map_id: int):
 
 
 # ── Navigation API ─────────────────────────────────────────────────────────────
-
-@app.route('/api/ros-status', methods=['GET'])
-def api_ros_status():
-    """
-    Kiểm tra /carla_ros_bridge node có đang chạy không.
-    Browser poll endpoint này định kỳ để hiện trạng thái Connected/Disconnected.
-    """
-    if not ROS_AVAILABLE or _ros_node is None:
-        return jsonify({'ok': True, 'running': False, 'reason': 'ROS node not initialized'})
-    try:
-        node_names = _ros_node.get_node_names()
-        running = 'carla_ros_bridge' in node_names
-        return jsonify({'ok': True, 'running': running, 'nodes': node_names})
-    except Exception as e:
-        return jsonify({'ok': True, 'running': False, 'reason': str(e)})
-
-
-@app.route('/api/odom', methods=['GET'])
-def api_odom():
-    """Trả về odom mới nhất từ /carla/hero/odometry."""
-    if _ros_node is None:
-        return jsonify({'ok': False, 'error': 'ROS node not running'}), 503
-    data = _ros_node.get_odom()
-    if data is None:
-        return jsonify({'ok': False, 'error': 'No odom data yet'}), 204
-    return jsonify({'ok': True, **data})
-
-@app.route('/api/odom/stream')
-def api_odom_stream():
-    """SSE endpoint — gửi đều 20 Hz (50 ms/lần), chỉ gửi khi position thay đổi.
-    Tránh burst (CARLA đẩy 7 msg/0.1s) gây CSS-transition quá ngắn,
-    và tránh event-driven miss khiến client nhận gap 6 giây rồi nhảy 9m.
-    """
-    def generate():
-        prev_xy = None
-        while True:
-            if _ros_node is None:
-                time.sleep(0.1)
-                continue
-            time.sleep(0.05)                       # 20 Hz cố định
-            data = _ros_node.get_odom()
-            if data is None:
-                continue
-            xy = (round(data['x'], 3), round(data['y'], 3))
-            if xy == prev_xy:
-                continue                           # chưa đổi → bỏ qua
-            prev_xy = xy
-            yield f"data: {json.dumps(data)}\n\n"
-
-    return Response(
-        stream_with_context(generate()),
-        mimetype='text/event-stream',
-        headers={
-            'Cache-Control':     'no-cache',
-            'X-Accel-Buffering': 'no',
-        }
-    )
-
-
-@app.route('/api/send-goal', methods=['POST'])
-def api_send_goal():
-    data = request.get_json(force=True, silent=True) or {}
-    try:
-        x = float(data['x'])
-        y = float(data['y'])
-    except (KeyError, ValueError, TypeError):
-        return jsonify({'ok': False, 'error': 'x và y phải là số hợp lệ'}), 400
-
-    if _ros_node is not None:
-        try:
-            snap = _ros_node.send_goal(x, y)
-            return jsonify({'ok': True, 'ros': True, 'x': x, 'y': y, **snap})
-        except Exception as e:
-            return jsonify({'ok': False, 'error': str(e)}), 500
-
-    return jsonify({'ok': True, 'ros': False, 'snapped': False, 'x': x, 'y': y})
-
-
-@app.route('/api/send-speed', methods=['POST'])
-def api_send_speed():
-    data = request.get_json(force=True, silent=True) or {}
-    try:
-        speed_kmh = float(data['speed_kmh'])
-    except (KeyError, ValueError, TypeError):
-        return jsonify({'ok': False, 'error': 'speed_kmh phải là số hợp lệ'}), 400
-
-    if speed_kmh < 0:
-        return jsonify({'ok': False, 'error': 'Tốc độ phải >= 0'}), 400
-
-    speed_mps = round(speed_kmh / 3.6, 4)
-
-    if _ros_node is not None:
-        try:
-            speed_mps = _ros_node.send_speed(speed_kmh)
-            return jsonify({'ok': True, 'ros': True, 'speed_kmh': speed_kmh, 'speed_mps': speed_mps})
-        except Exception as e:
-            return jsonify({'ok': False, 'error': str(e)}), 500
-
-    return jsonify({'ok': True, 'ros': False, 'speed_kmh': speed_kmh, 'speed_mps': speed_mps})
+# /api/odom/stream sẽ được thêm lại khi có odom_node.py
 
 
 @app.route('/api/navigate', methods=['POST'])
 def api_navigate():
     """
-    Gộp goal + speed vào 1 lần gọi.
+    Nhận lệnh từ browser, forward xuống navigate_node.py qua stdin.
     Body JSON:
-      { "x": float, "y": float, "speed_kmh": float }   → Go
-      { "stop": true }                                  → STOP (speed=0, goal=(0,0,0))
+      { "x": float, "y": float, "speed_kmh": float }  → GO
+      { "stop": true }                                 → STOP
     """
     data = request.get_json(force=True, silent=True) or {}
 
-    # ── STOP ──────────────────────────────────────────────────────────────────
     if data.get('stop'):
-        result = {'ok': True, 'stopped': True}
-        if _ros_node is not None:
-            try:
-                _ros_node.send_speed(0.0)
-                # Gửi goal tại vị trí hiện tại để hủy đích cũ
-                odom = _ros_node.get_odom()
-                cx = odom['x'] if odom else 0.0
-                cy = odom['y'] if odom else 0.0
-                _ros_node.send_goal(cx, cy)
-                result['ros'] = True
-            except Exception as e:
-                result['ros_error'] = str(e)
-        return jsonify(result)
+        send_navigate_command('STOP')
+        return jsonify({'ok': True, 'stopped': True})
 
-    # ── GO ────────────────────────────────────────────────────────────────────
     try:
         x         = float(data['x'])
         y         = float(data['y'])
         speed_kmh = float(data['speed_kmh'])
     except (KeyError, ValueError, TypeError):
-        return jsonify({'ok': False, 'error': 'Cần cung cấp x, y (số) và speed_kmh (số)'}), 400
+        return jsonify({'ok': False, 'error': 'Cần x, y (số) và speed_kmh (số)'}), 400
 
     if speed_kmh < 0:
-        return jsonify({'ok': False, 'error': 'Tốc độ phải >= 0'}), 400
+        return jsonify({'ok': False, 'error': 'speed_kmh phải >= 0'}), 400
 
-    result = {'ok': True, 'x': x, 'y': y, 'speed_kmh': speed_kmh}
-
-    if _ros_node is not None:
-        try:
-            snap      = _ros_node.send_goal(x, y)
-            speed_mps = _ros_node.send_speed(speed_kmh)
-            result.update({'ros': True, 'speed_mps': speed_mps, **snap})
-        except Exception as e:
-            return jsonify({'ok': False, 'error': str(e)}), 500
-    else:
-        result.update({'ros': False, 'snapped': False, 'speed_mps': round(speed_kmh / 3.6, 4)})
-
-    return jsonify(result)
+    send_navigate_command(f'GO {x} {y} {speed_kmh}')
+    return jsonify({'ok': True, 'x': x, 'y': y, 'speed_kmh': speed_kmh})
 
 
 # ── Bootstrap ──────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     os.makedirs(MAPS_DIR, exist_ok=True)
 
-    if ROS_AVAILABLE and os.environ.get('WERKZEUG_RUN_MAIN') != 'false':
-        _start_ros()
+    # Spawn các ROS node subprocess (chỉ trong process chính)
+    start_bridge_checker()
+    start_navigate_node()
 
-    # Bọc quá trình chạy Web trong khối try...finally để bắt sự kiện tắt ứng dụng
     try:
         app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False, threaded=True)
     finally:
-        # Đoạn code này LUÔN LUÔN được chạy khi bạn bấm Ctrl+C hoặc Web bị tắt
-        if ROS_AVAILABLE:
-            print('\n[Web] Đang đóng Web Server...')
-            print('[ROS] Đang giải phóng bộ nhớ đệm FastDDS và hủy Node ngầm...')
-            try:
-                if _ros_executor is not None:
-                    _ros_executor.shutdown()  # Bước 1: Ra lệnh dừng vòng lặp spin() đang chạy ngầm
-                if rclpy.ok():
-                    rclpy.shutdown()          # Bước 2: Tắt hẳn hệ thống rclpy, dọn sạch Shared Memory
-                print('[ROS] Đã dọn dẹp gọn gàng và đóng sạch sẽ!')
-            except Exception as e:
-                print(f'[ROS] Có lỗi xảy ra khi dọn dẹp: {e}')
+        print('\n[Web] Đang đóng Web Server...')
+        stop_navigate_node()
+        stop_bridge_checker()
+        print('[Web] Đã dọn dẹp xong.')

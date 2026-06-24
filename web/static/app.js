@@ -49,16 +49,7 @@ let mapBaseFit    = { width: 0, height: 0 };
 let selectedWaypoint = null;
 
 // ── Live Tracking state ───────────────────────────────────────────────────────
-let odomEventSource  = null;  // EventSource handle cho SSE odom stream
-let odomPollInterval = null;  // giữ lại để không break code cũ (unused)
-let lastOdomPos      = null;   // { pixel_x, pixel_y } trong ảnh gốc
-let lastOdomYawDeg   = 0;      // góc hiện tại (degrees) để rotate icon
-let odomStaleTimer   = null;   // timeout để đánh dấu dữ liệu cũ
-
-// ── CSS-transition smooth movement ───────────────────────────────────────────
-let lastMsgTime    = 0;      // performance.now() của message trước
-let cssTransDur    = 150;    // ms — adaptive, đo từ interval thực giữa các message
-let cssYawAccum    = 90;     // góc tích lũy (unwrapped) để CSS transition xoay đường ngắn
+// (sẽ được khởi tạo lại khi viết odom_node.py)
 
 const MIN_ZOOM_STATIC = 0.1;
 const MAX_ZOOM_STATIC = 2.0;
@@ -216,7 +207,7 @@ function updateCanvasSize() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   drawOverlay();
   updateSelectedPin();
-  updateCarIcon();
+
 }
 
 function updateSelectedPin() {
@@ -268,78 +259,6 @@ function imagePixelToScreen(pixel_x, pixel_y) {
     screenX: pixel_x * overlayTransform.scale + overlayTransform.x,
     screenY: pixel_y * overlayTransform.scale + overlayTransform.y,
   };
-}
-
-/** Render car icon — chỉ dùng transform (GPU composite, không trigger layout). */
-function renderCarAt(px, py, cssYaw) {
-  if (!mapHasImage || !hasValidWaypointMetadata(waypointMetadata)) return;
-  const { screenX, screenY } = imagePixelToScreen(px, py);
-  carIcon.style.transform = `translate3d(${screenX}px, ${screenY}px, 0) translate(-50%, -50%) rotate(${cssYaw}deg)`;
-}
-
-/** Cập nhật vị trí khi pan/zoom — tắt transition để snap ngay. */
-function updateCarIcon() {
-  if (!lastOdomPos || !mapHasImage || !hasValidWaypointMetadata(waypointMetadata)) return;
-  carIcon.style.transitionDuration = '0ms';
-  renderCarAt(lastOdomPos.pixel_x, lastOdomPos.pixel_y, cssYawAccum);
-  requestAnimationFrame(() => {
-    carIcon.style.transitionDuration = `${Math.round(cssTransDur)}ms`;
-  });
-}
-
-/** Xử lý message từ /carla/hero/odometry */
-function handleOdomMessage(msg) {
-  const rosX = msg.pose.pose.position.x;
-  const rosY = msg.pose.pose.position.y;
-  const pixel = rosToPixel(rosX, rosY);
-  if (!pixel) return;
-
-  // ── Góc quay ──
-  const q = msg.pose.pose.orientation;
-  const yawRad = quatToYawRad(q);
-  const newYawDeg = -(yawRad * 180 / Math.PI) + 90;
-
-  // Unwrap góc để CSS transition xoay đường ngắn nhất (tránh quay 350° thay vì 10°)
-  let diff = newYawDeg - (cssYawAccum % 360);
-  if (diff > 180) diff -= 360;
-  if (diff < -180) diff += 360;
-  cssYawAccum += diff;
-
-  // ── Transition duration — adaptive theo interval + distance ──
-  const now = performance.now();
-  if (lastMsgTime > 0) {
-    const gap = now - lastMsgTime;
-
-    // Tính khoảng cách pixel giữa vị trí cũ và mới
-    const dx = pixel.pixel_x - (lastOdomPos ? lastOdomPos.pixel_x : pixel.pixel_x);
-    const dy = pixel.pixel_y - (lastOdomPos ? lastOdomPos.pixel_y : pixel.pixel_y);
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
-    if (gap > 300 && dist > 5) {
-      // Gap lớn + nhảy xa: transition dài tỷ lệ gap để xe chạy đều thay vì bay vụt
-      cssTransDur = Math.min(gap * 0.8, 2000);
-    } else {
-      // Hoạt động bình thường (server 20Hz → gap ~50ms): EMA giữ đều
-      const clamped = Math.max(30, Math.min(200, gap));
-      cssTransDur = cssTransDur * 0.3 + clamped * 1.2 * 0.7;
-    }
-  }
-  lastMsgTime = now;
-
-  // ── Render (CSS transition tự animate mượt giữa vị trí cũ → mới) ──
-  carIcon.style.transitionDuration = `${Math.round(cssTransDur)}ms`;
-  carIcon.style.display = 'block';
-  lastOdomPos    = pixel;
-  lastOdomYawDeg = newYawDeg;
-  renderCarAt(pixel.pixel_x, pixel.pixel_y, cssYawAccum);
-
-  // ── Tốc độ thực ──
-  const lx = msg.twist.twist.linear.x;
-  const ly = msg.twist.twist.linear.y;
-  const lz = msg.twist.twist.linear.z;
-  const speedKmhActual = Math.sqrt(lx * lx + ly * ly + lz * lz) * 3.6;
-  actualSpeedEl.textContent = `${speedKmhActual.toFixed(1)} km/h`;
-  actualSpeedEl.classList.remove('stale', 'no-data');
 }
 
 function drawOverlay() {
@@ -434,7 +353,7 @@ function handleMapWheel(event) {
   updateMapHud();
   drawOverlay();
   updateSelectedPin();
-  updateCarIcon();
+
 }
 
 function handleMapPointerDown(event) {
@@ -467,7 +386,7 @@ function handleMapPointerMove(event) {
   setMapTransform();
   drawOverlay();
   updateSelectedPin();
-  updateCarIcon();
+
   updateMapHud();
 }
 
@@ -877,15 +796,20 @@ async function autoLoadFirstMap() {
   }
 }
 
-// ── ROS Status Polling ────────────────────────────────────────────────────────
-// Không dùng WebSocket/rosbridge. Browser poll /api/ros-status định kỳ
-// để kiểm tra /carla_ros_bridge node có alive không.
+// ── ROS Status & Log Stream ───────────────────────────────────────────────────
+// Bridge checker (bridge_check.py) chạy trên máy local, push heartbeat lên Flask.
+// Frontend:
+//   1. Poll /api/ros/status mỗi 6s để đồng bộ trạng thái (fallback).
+//   2. Kết nối SSE /api/ros/log-stream để nhận log từ bridge_check.py NGAY LẬP TỨC.
+//      Log từ ROS hiển thị màu khác (class 'ros') để phân biệt với log web.
 
 let rosStatusInterval = null;
-let rosRunning        = false;   // trạng thái hiện tại
+let rosRunning        = false;
+let rosLogEventSource = null;
 
 function setConnectedUI(state) {
   rosRunning = state === 'connected';
+  connected  = rosRunning;   // sync alias dùng ở sendGoal/sendSpeed
 
   connDot.className = 'conn-dot ' +
     (state === 'connected' ? 'connected' : state === 'connecting' ? 'connecting' : '');
@@ -899,82 +823,64 @@ function setConnectedUI(state) {
   }
 }
 
+// addLog cho log đến từ ROS node (màu phân biệt)
+function addRosLog(level, msg) {
+  const empty = logBody.querySelector('.log-empty');
+  if (empty) empty.remove();
+
+  const now = new Date().toLocaleTimeString('vi-VN', { hour12: false });
+  const row = document.createElement('div');
+  // class 'ros' để CSS tô màu riêng, giữ thêm class level để fallback
+  row.className = `log-row ros ${level}`;
+  row.innerHTML = `
+    <span class="log-time">${now}</span>
+    <span class="log-pip"></span>
+    <span class="log-badge">ROS</span>
+    <span class="log-text">${escHtml(msg)}</span>
+  `;
+  logBody.prepend(row);
+  while (logBody.children.length > 80) logBody.lastChild.remove();
+}
+
+// ── SSE log stream từ bridge_check.py ────────────────────────────────────────
+function startRosLogStream() {
+  if (rosLogEventSource) return;   // đã kết nối
+  rosLogEventSource = new EventSource('/api/ros/log-stream');
+
+  rosLogEventSource.onmessage = (e) => {
+    try {
+      const { msg, level } = JSON.parse(e.data);
+      addRosLog(level || 'info', msg);
+    } catch { /* ignore malformed */ }
+  };
+
+  rosLogEventSource.onerror = () => {
+    // Browser tự reconnect SSE — không cần xử lý thêm
+  };
+}
+
+// ── Poll trạng thái (fallback / sync UI) ─────────────────────────────────────
 async function checkRosStatus() {
   try {
-    const res  = await fetch('/api/ros-status');
+    const res  = await fetch('/api/ros/status');
     const data = await res.json();
     if (data.running) {
       if (!rosRunning) {
         setConnectedUI('connected');
-        addLog('info', 'carla_ros_bridge detected — ROS online');
-        startOdomPolling();
       }
     } else {
-      if (rosRunning) {
-        addLog('warn', 'carla_ros_bridge not found — ROS offline');
-        stopOdomPolling();
-      }
       setConnectedUI('disconnected');
     }
   } catch {
-    if (rosRunning) {
-      addLog('error', 'Không thể kiểm tra trạng thái ROS');
-      stopOdomPolling();
-    }
     setConnectedUI('disconnected');
   }
 }
 
 function startRosStatusPolling() {
-  checkRosStatus();   // check ngay lập tức
+  startRosLogStream();            // bắt đầu nhận log qua SSE ngay
+  checkRosStatus();               // poll ngay lập tức
   if (rosStatusInterval) return;
-  rosStatusInterval = setInterval(checkRosStatus, 3000);
-}
-
-// ── Odom SSE Stream ───────────────────────────────────────────────────────────
-function startOdomPolling() {
-  if (odomEventSource) return;
-  odomEventSource = new EventSource('/api/odom/stream');
-
-  odomEventSource.onmessage = (e) => {
-    try {
-      const data = JSON.parse(e.data);
-      handleOdomMessage({
-        pose: {
-          pose: {
-            position:    { x: data.x,  y: data.y,  z: data.z  },
-            orientation: { x: data.qx, y: data.qy, z: data.qz, w: data.qw },
-          }
-        },
-        twist: { twist: { linear: { x: data.vx, y: data.vy, z: data.vz } } },
-      });
-    } catch { /* bỏ qua frame lỗi */ }
-  };
-
-  odomEventSource.onerror = () => {
-    // EventSource tự reconnect sau 3s — không cần xử lý thêm
-    addLog('warn', 'Odom SSE: mất kết nối, đang thử lại…');
-  };
-
-  addLog('info', 'Odom SSE stream connected');
-}
-
-function stopOdomPolling() {
-  if (odomEventSource) {
-    odomEventSource.close();
-    odomEventSource = null;
-  }
-  lastMsgTime = 0;
-  cssTransDur = 150;
-  cssYawAccum = 90;
-  clearTimeout(odomStaleTimer);
-  lastOdomPos    = null;
-  lastOdomYawDeg = 0;
-  carIcon.style.display     = 'none';
-  actualSpeedEl.textContent = '— km/h';
-  actualSpeedEl.classList.remove('stale');
-  actualSpeedEl.classList.add('no-data');
-  addLog('info', 'Odom SSE stream closed');
+  rosStatusInterval = setInterval(checkRosStatus, 6000);  // 6s — chỉ để sync fallback
 }
 
 // Nút "Check ROS" — trigger check thủ công ngay lập tức
