@@ -110,7 +110,7 @@ function startOdomStream() {
 //   vì ROS yaw=0 → xe hướng +X (3h) nhưng SVG mũi trỏ 12h → cần offset +90°
 //   dấu âm vì CSS rotate() thuận chiều kim đồng hồ, ROS ngược chiều.
 
-const CAR_SIZE = 32;   // px — chiều rộng hiển thị, bạn báo nếu cần to/nhỏ hơn
+const CAR_SIZE = 44;   // px — tăng từ 32 lên 44
 
 carIcon.style.width    = `${CAR_SIZE}px`;
 carIcon.style.height   = `${CAR_SIZE}px`;
@@ -120,14 +120,13 @@ carIcon.style.transformOrigin = '50% 50%';
 carIcon.style.pointerEvents   = 'none';
 carIcon.src = '/static/icons/car.svg';
 
-let _lastCarPixel = null;   // { pixel_x, pixel_y, yaw_rad } — để redraw khi pan/zoom
+let _lastCarPixel  = null;
+let _cssYawAccum   = 0;     // yaw tích lũy (unwrapped) — tránh CSS rotate giật tại ±π
 
 function updateCarIcon() {
   if (!_lastCarPixel || !mapHasImage || !hasValidWaypointMetadata(waypointMetadata)) return;
-  const { pixel_x, pixel_y, yaw_rad } = _lastCarPixel;
-  const { screenX, screenY } = imagePixelToScreen(pixel_x, pixel_y);
-  const cssYaw = -(yaw_rad * 180 / Math.PI) + 90;
-  carIcon.style.transform = `translate(${screenX}px, ${screenY}px) translate(-50%, -50%) rotate(${cssYaw}deg)`;
+  const { pixel_x, pixel_y } = _lastCarPixel;
+  carIcon.style.transform = `translate(${pixel_x}px, ${pixel_y}px) translate(-50%, -50%) rotate(${_cssYawAccum}deg)`;
   carIcon.style.display   = 'block';
 }
 
@@ -137,10 +136,15 @@ function drawVehicleDot(rosX, rosY, yawRad) {
   const pixel = rosToPixel(rosX, rosY);
   if (!pixel) return;
 
-  // Lưu lại để redraw khi pan/zoom
-  _lastCarPixel = { pixel_x: pixel.pixel_x, pixel_y: pixel.pixel_y, yaw_rad: yawRad };
+  // Unwrap yaw — tính delta ngắn nhất từ góc tích lũy hiện tại
+  const rawDeg  = -(yawRad * 180 / Math.PI) + 90;
+  let diff      = rawDeg - (_cssYawAccum % 360);
+  if (diff >  180) diff -= 360;
+  if (diff < -180) diff += 360;
+  _cssYawAccum += diff;
 
-  // Vẽ lại waypoints overlay + icon
+  _lastCarPixel = { pixel_x: pixel.pixel_x, pixel_y: pixel.pixel_y };
+
   drawOverlay();
   updateCarIcon();
 }
@@ -198,10 +202,34 @@ function updateMapHud() {
   mapScaleLabel.textContent = `zoom ${(currentScale * 100).toFixed(0)}% | viewport ${Math.round(rect.width)}×${Math.round(rect.height)}px`;
 }
 
+// ── carLayer — div cùng transform với mapImg, carIcon là con của nó ──────────
+// Tạo và inject vào mapCanvasWrap ngay khi script load
+const carLayer = document.createElement('div');
+carLayer.id = 'carLayer';
+carLayer.style.cssText = `
+  position: absolute;
+  top: 0; left: 0;
+  width: 0; height: 0;
+  overflow: visible;
+  pointer-events: none;
+  transform-origin: 0 0;
+`;
+// Đặt carIcon vào carLayer thay vì mapCanvasWrap
+carLayer.appendChild(carIcon);
+// Inject vào mapCanvasWrap (sẽ có sau DOMContentLoaded)
+document.addEventListener('DOMContentLoaded', () => {
+  mapCanvasWrap.appendChild(carLayer);
+}, { once: true });
+// Fallback nếu DOM đã load
+if (document.readyState !== 'loading') mapCanvasWrap.appendChild(carLayer);
+
 function setMapTransform() {
+  const t = `translate(${imageTransform.x}px, ${imageTransform.y}px) scale(${imageTransform.scale})`;
   if (mapImg.style.display !== 'none') {
-    mapImg.style.transform = `translate(${imageTransform.x}px, ${imageTransform.y}px) scale(${imageTransform.scale})`;
+    mapImg.style.transform = t;
   }
+  // carLayer luôn đồng bộ transform với mapImg — icon theo bản đồ tự động
+  carLayer.style.transform = t;
 }
 
 function calculateDynamicMinZoom() {
@@ -269,7 +297,7 @@ function applyMetadataAlignment() {
   overlayTransform = { x: centerX, y: centerY, scale: 1 };
   setMapTransform();
   drawOverlay();
-  updateCarIcon();
+
   mapHasWaypoint  = true;
   mapHasImage     = true;
   alignmentLocked = true;
@@ -448,9 +476,8 @@ function handleMapWheel(event) {
   constrainImageTransform();
   setMapTransform();
   updateMapHud();
-  updateCarIcon();        // icon update ngay — trước drawOverlay
   updateSelectedPin();
-  requestAnimationFrame(() => { drawOverlay(); updateCarIcon(); });
+  requestAnimationFrame(() => { drawOverlay(); });
 }
 
 function handleMapPointerDown(event) {
@@ -481,9 +508,8 @@ function handleMapPointerMove(event) {
   }
   constrainImageTransform();
   setMapTransform();
-  updateCarIcon();        // icon update ngay — trước drawOverlay
   updateSelectedPin();
-  requestAnimationFrame(() => { drawOverlay(); updateCarIcon(); });
+  requestAnimationFrame(() => { drawOverlay(); });
   updateMapHud();
 }
 
