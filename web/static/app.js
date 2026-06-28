@@ -126,8 +126,25 @@ let _cssYawAccum   = 0;     // yaw tích lũy (unwrapped) — tránh CSS rotate 
 function updateCarIcon() {
   if (!_lastCarPixel || !mapHasImage || !hasValidWaypointMetadata(waypointMetadata)) return;
   const { pixel_x, pixel_y } = _lastCarPixel;
-  carIcon.style.transform = `translate(${pixel_x}px, ${pixel_y}px) translate(-50%, -50%) rotate(${_cssYawAccum}deg)`;
-  carIcon.style.display   = 'block';
+
+  // Kích thước hiển thị = CAR_SIZE * s * currentScale  (carLayer đang scale currentScale)
+  // Dưới 50%: cố định 44px  → s = 1/currentScale
+  // Từ  50%:  to theo bản đồ → s = 1/SCALE_THRESHOLD (hằng số)
+  //   tại 50%  → 44 * 2.0 * 0.5 = 44px  (liên tục, không giật)
+  //   tại 100% → 44 * 2.0 * 1.0 = 88px
+  //   tại 200% → 44 * 2.0 * 2.0 = 176px
+  const SCALE_THRESHOLD = 0.5;
+  const s = imageTransform.scale < SCALE_THRESHOLD
+    ? 1 / imageTransform.scale          // chế độ cố định
+    : 1 / SCALE_THRESHOLD;              // chế độ theo bản đồ (s = 2.0)
+
+  carIcon.style.transformOrigin = '0 0';
+  carIcon.style.transform =
+    `translate(${pixel_x}px, ${pixel_y}px)` +
+    ` rotate(${_cssYawAccum}deg)` +
+    ` scale(${s})` +
+    ` translate(${-CAR_SIZE / 2}px, ${-CAR_SIZE / 2}px)`;
+  carIcon.style.display = 'block';
 }
 
 function drawVehicleDot(rosX, rosY, yawRad) {
@@ -228,8 +245,8 @@ function setMapTransform() {
   if (mapImg.style.display !== 'none') {
     mapImg.style.transform = t;
   }
-  // carLayer luôn đồng bộ transform với mapImg — icon theo bản đồ tự động
   carLayer.style.transform = t;
+  updateCarIcon();   // counter-scale cập nhật cùng tick, không delay
 }
 
 function calculateDynamicMinZoom() {
