@@ -414,6 +414,28 @@ html, body {
 
 .btn-action:hover:not(:disabled), .btn-connect:hover { background: var(--accent-d); }
 .btn-estop:hover:not(:disabled) { background: var(--danger-d); }
+
+/* btn-connect — đồng nhất hoàn toàn với btn-select-map */
+.btn-connect {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 14px;
+  height: 34px;
+  background: var(--accent);
+  border: none;
+  border-radius: 7px;
+  color: #0d1117;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background .15s, transform .1s;
+  width: auto;
+}
+.btn-connect:hover  { background: var(--accent-d); }
+.btn-connect:active { transform: scale(.97); }
 .btn-action:active:not(:disabled), .btn-estop:active:not(:disabled) { transform: scale(.98); }
 .btn-action:disabled, .btn-estop:disabled { opacity: .35; cursor: not-allowed; }
 

@@ -68,7 +68,7 @@ def _build_node(log_path: str):
                 self._cb,
                 qos,
             )
-            self.get_logger().info('[OdomNode] Đã khởi chạy, đang subscribe /carla/markers')
+            self.get_logger().info('Đã khởi chạy.')
 
         def _cb(self, msg: MarkerArray):
             if not msg.markers:
@@ -174,7 +174,7 @@ def start_odom_node(log_path: str):
     try:
         import rclpy
     except ImportError:
-        print('[OdomNode] rclpy không tìm thấy — bỏ qua odom node.')
+        print('rclpy không tìm thấy — bỏ qua odom node.')
         return
 
     if _thread is not None and _thread.is_alive():
@@ -193,7 +193,7 @@ def start_odom_node(log_path: str):
 
             rclpy.spin(_node)
         except Exception as e:
-            print(f'[OdomNode] Lỗi: {type(e).__name__}: {e}')
+            print(f'Lỗi: {type(e).__name__}: {e}')
         finally:
             if _node is not None:
                 _node.destroy_node()
@@ -205,7 +205,7 @@ def start_odom_node(log_path: str):
 
     _thread = threading.Thread(target=_run, daemon=True, name='odom-node')
     _thread.start()
-    print('[OdomNode] Thread đã khởi động.')
+    print('Thread đã khởi động.')
 
 
 def stop_odom_node():

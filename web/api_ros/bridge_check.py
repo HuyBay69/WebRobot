@@ -7,10 +7,6 @@ Chức năng:
   - Chỉ gửi HTTP POST lên Flask KHI trạng thái thay đổi (edge-triggered).
   - Gửi kèm log message để hiển thị trên bảng log của web.
   - Không gửi gì nếu trạng thái vẫn như cũ.
-
-Cách chạy (do Flask tự spawn, hoặc chạy tay để debug):
-  python3 bridge_check.py
-  python3 bridge_check.py --flask-url http://localhost:5000 --interval 5 --token mytoken
 """
 
 import argparse

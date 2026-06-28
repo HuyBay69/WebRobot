@@ -47,7 +47,7 @@ class NavigateNode(Node):
             speed_qos,
         )
 
-        self.get_logger().info('[NavigateNode] Đã khởi chạy.')
+        self.get_logger().info('Đã khởi chạy.')
 
     # ── Xử lý lệnh ──────────────────────────────────────────────────────────────
     def handle_command(self, line: str):
@@ -63,30 +63,30 @@ class NavigateNode(Node):
         elif cmd == 'STOP':
             self._handle_stop()
         else:
-            self.get_logger().warn(f'[NavigateNode] Lệnh không hợp lệ: {line.strip()!r}')
+            self.get_logger().warn(f'Lệnh không hợp lệ: {line.strip()!r}')
 
     def _handle_go(self, args: list):
         """GO x y speed_kmh"""
         if len(args) != 3:
-            self.get_logger().warn('[NavigateNode] GO cần đúng 3 tham số: x y speed_kmh')
+            self.get_logger().warn('GO cần đúng 3 tham số: x y speed_kmh')
             return
         try:
             x         = float(args[0])
             y         = float(args[1])
             speed_kmh = float(args[2])
         except ValueError:
-            self.get_logger().warn('[NavigateNode] GO: x, y, speed_kmh phải là số')
+            self.get_logger().warn('GO: x, y, speed_kmh phải là số')
             return
 
         if speed_kmh < 0:
-            self.get_logger().warn('[NavigateNode] GO: speed_kmh phải >= 0')
+            self.get_logger().warn('GO: speed_kmh phải >= 0')
             return
 
         self._publish_goal(x, y)
         self._publish_speed(speed_kmh)
 
         self.get_logger().info(
-            f'[NavigateNode] GO → x={x:.3f} y={y:.3f} | '
+            f'GO ! x={x:.3f} y={y:.3f} | '
             f'{speed_kmh:.1f} km/h ({speed_kmh / 3.6:.3f} m/s)'
         )
 
@@ -94,7 +94,7 @@ class NavigateNode(Node):
         """STOP: speed=0, goal tại (0,0,0)"""
         self._publish_speed(0.0)
         self._publish_goal(0.0, 0.0)
-        self.get_logger().info('[NavigateNode] STOP → speed=0, goal=(0,0,0)')
+        self.get_logger().info('STOP !')
 
     # ── Publish helpers ──────────────────────────────────────────────────────────
     def _publish_goal(self, x: float, y: float, z: float = 0.0):
