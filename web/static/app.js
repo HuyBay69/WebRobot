@@ -80,15 +80,15 @@ function startOdomStream() {
 
     latestOdom = frame;
 
-    // ── Log ra F12 console (xem Network→WS hoặc Console) ──────────────────
+    // ── Log ra F12 console ─────────────────────────────────────────────────
     console.debug(
       `[OdomStream] x=${frame.x.toFixed(3)} y=${frame.y.toFixed(3)} ` +
       `yaw=${frame.yaw.toFixed(4)} ros_t=${frame.ros_t.toFixed(3)} ` +
       `Δt=${frame.delta_ms.toFixed(2)}ms`
     );
 
-    // ── Vẽ chấm xe lên canvas ─────────────────────────────────────────────
-    drawVehicleDot(frame.x, frame.y);
+    // ── Vẽ xe lên map ─────────────────────────────────────────────────────
+    drawVehicleDot(frame.x, frame.y, frame.yaw);
   };
 
   odomWs.onerror = (e) => {
@@ -103,30 +103,46 @@ function startOdomStream() {
 }
 
 /** Vẽ chấm đỏ viền trắng tại vị trí xe (ROS frame → pixel → screen). */
-function drawVehicleDot(rosX, rosY) {
+// ── Vehicle icon (car.svg) ────────────────────────────────────────────────────
+// Dùng img#carIcon đã có trong HTML, đặt position absolute trên map-canvas-wrap.
+// SVG gốc: mũi xe trỏ lên (12h) — khớp với yaw=0 = hướng Bắc (ROS +X).
+// Công thức rotate: css_yaw = -(yaw_rad * 180/PI) + 90
+//   vì ROS yaw=0 → xe hướng +X (3h) nhưng SVG mũi trỏ 12h → cần offset +90°
+//   dấu âm vì CSS rotate() thuận chiều kim đồng hồ, ROS ngược chiều.
+
+const CAR_SIZE = 32;   // px — chiều rộng hiển thị, bạn báo nếu cần to/nhỏ hơn
+
+carIcon.style.width    = `${CAR_SIZE}px`;
+carIcon.style.height   = `${CAR_SIZE}px`;
+carIcon.style.position = 'absolute';
+carIcon.style.display  = 'none';
+carIcon.style.transformOrigin = '50% 50%';
+carIcon.style.pointerEvents   = 'none';
+carIcon.src = '/static/icons/car.svg';
+
+let _lastCarPixel = null;   // { pixel_x, pixel_y, yaw_rad } — để redraw khi pan/zoom
+
+function updateCarIcon() {
+  if (!_lastCarPixel || !mapHasImage || !hasValidWaypointMetadata(waypointMetadata)) return;
+  const { pixel_x, pixel_y, yaw_rad } = _lastCarPixel;
+  const { screenX, screenY } = imagePixelToScreen(pixel_x, pixel_y);
+  const cssYaw = -(yaw_rad * 180 / Math.PI) + 90;
+  carIcon.style.transform = `translate(${screenX}px, ${screenY}px) translate(-50%, -50%) rotate(${cssYaw}deg)`;
+  carIcon.style.display   = 'block';
+}
+
+function drawVehicleDot(rosX, rosY, yawRad) {
   if (!mapHasImage || !hasValidWaypointMetadata(waypointMetadata)) return;
 
   const pixel = rosToPixel(rosX, rosY);
   if (!pixel) return;
 
-  const { screenX, screenY } = imagePixelToScreen(pixel.pixel_x, pixel.pixel_y);
+  // Lưu lại để redraw khi pan/zoom
+  _lastCarPixel = { pixel_x: pixel.pixel_x, pixel_y: pixel.pixel_y, yaw_rad: yawRad };
 
-  const canvas = overlayCanvas;
-  const ctx    = canvas.getContext('2d');
-
-  // Xóa chấm cũ và vẽ lại toàn overlay (waypoints + chấm xe)
+  // Vẽ lại waypoints overlay + icon
   drawOverlay();
-
-  const RADIUS = 6;   // px — chấm 12px đường kính, vừa dễ thấy không quá to
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(screenX, screenY, RADIUS, 0, Math.PI * 2);
-  ctx.fillStyle   = '#ff2222';
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth   = 2.5;
-  ctx.fill();
-  ctx.stroke();
-  ctx.restore();
+  updateCarIcon();
 }
 
 const MIN_ZOOM_STATIC = 0.1;
@@ -253,6 +269,7 @@ function applyMetadataAlignment() {
   overlayTransform = { x: centerX, y: centerY, scale: 1 };
   setMapTransform();
   drawOverlay();
+  updateCarIcon();
   mapHasWaypoint  = true;
   mapHasImage     = true;
   alignmentLocked = true;
@@ -284,6 +301,7 @@ function updateCanvasSize() {
   const ctx = overlayCanvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   drawOverlay();
+  updateCarIcon();
   updateSelectedPin();
 
 }
@@ -405,6 +423,7 @@ function centerView() {
   setMapTransform();
   updateMapHud();
   drawOverlay();
+  updateCarIcon();
 }
 
 // ── Map interaction events ────────────────────────────────────────────────────
@@ -429,9 +448,9 @@ function handleMapWheel(event) {
   constrainImageTransform();
   setMapTransform();
   updateMapHud();
-  drawOverlay();
+  updateCarIcon();        // icon update ngay — trước drawOverlay
   updateSelectedPin();
-
+  requestAnimationFrame(() => { drawOverlay(); updateCarIcon(); });
 }
 
 function handleMapPointerDown(event) {
@@ -462,9 +481,9 @@ function handleMapPointerMove(event) {
   }
   constrainImageTransform();
   setMapTransform();
-  drawOverlay();
+  updateCarIcon();        // icon update ngay — trước drawOverlay
   updateSelectedPin();
-
+  requestAnimationFrame(() => { drawOverlay(); updateCarIcon(); });
   updateMapHud();
 }
 
