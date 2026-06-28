@@ -7,11 +7,14 @@ import threading
 import time
 
 from flask import Flask, jsonify, render_template, request, send_from_directory, Response, stream_with_context
+from flask_sock import Sock
 from werkzeug.utils import secure_filename
 from api_ros.ros_status_api import ros_status_bp, start_bridge_checker, stop_bridge_checker
-from api_ros.navigate_node import start_navigate_node, stop_navigate_node, send_navigate_command
+from api_ros.navigate_node  import start_navigate_node, stop_navigate_node, send_navigate_command
+from api_ros.odom_node      import start_odom_node, stop_odom_node, register_ws_client, unregister_ws_client
 
-app = Flask(__name__)
+app  = Flask(__name__)
+sock = Sock(app)
 app.register_blueprint(ros_status_bp)
 
 # ── Ẩn log poll /api/ros/status (spam mỗi 6s) ────────────────────────────────
@@ -25,14 +28,15 @@ logging.getLogger('werkzeug').addFilter(_SuppressRosStatusLog())
 BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
 MAPS_DIR      = os.path.join(BASE_DIR, 'maps')
 TRACKING_LOG  = os.path.join(BASE_DIR, 'livetracking.log')
+ODOM_LOG      = os.path.join(BASE_DIR, 'odom_check_log.txt')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50 MB
 
 ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp', 'webp'}
 
-# ── ROS nodes chạy ngoài (subprocess) ────────────────────────────────────────
-# bridge_check_node.py : kiểm tra carla_ros_bridge, push heartbeat lên web
-# navigate_node.py     : nhận lệnh GO/STOP từ stdin, publish ROS topics
-# odom_node.py         : subscribe /carla/markers + odometry, push SSE (xem bên dưới)
+# ── ROS nodes ─────────────────────────────────────────────────────────────────
+# bridge_check_node.py : subprocess — kiểm tra carla_ros_bridge, push heartbeat
+# navigate_node.py     : subprocess — nhận GO/STOP từ stdin, publish ROS topics
+# odom_node.py         : thread trong Flask  — subscribe /carla/markers, WebSocket broadcast
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -180,6 +184,19 @@ def api_load_map(map_id: int):
 
 
 # ── Navigation API ─────────────────────────────────────────────────────────────
+
+@sock.route('/ws/odom_stream')
+def ws_odom_stream(ws):
+    """WebSocket endpoint — push odom frame tới browser mỗi khi có dữ liệu mới."""
+    register_ws_client(ws)
+    try:
+        while True:
+            # Giữ connection sống — browser không cần gửi gì, chỉ nhận
+            ws.receive(timeout=60)
+    except Exception:
+        pass
+    finally:
+        unregister_ws_client(ws)
 # /api/odom/stream sẽ được thêm lại khi có odom_node.py
 
 
@@ -215,14 +232,15 @@ def api_navigate():
 if __name__ == '__main__':
     os.makedirs(MAPS_DIR, exist_ok=True)
 
-    # Spawn các ROS node subprocess (chỉ trong process chính)
     start_bridge_checker()
     start_navigate_node()
+    start_odom_node(ODOM_LOG)
 
     try:
         app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False, threaded=True)
     finally:
         print('\n[Web] Đang đóng Web Server...')
+        stop_odom_node()
         stop_navigate_node()
         stop_bridge_checker()
         print('[Web] Đã dọn dẹp xong.')

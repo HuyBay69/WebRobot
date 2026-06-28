@@ -51,6 +51,84 @@ let selectedWaypoint = null;
 // ── Live Tracking state ───────────────────────────────────────────────────────
 // (sẽ được khởi tạo lại khi viết odom_node.py)
 
+// ── Odom WebSocket ────────────────────────────────────────────────────────────
+// Nhận dữ liệu position/yaw từ odom_node.py qua /ws/odom_stream.
+// Mỗi frame: { x, y, yaw, ros_t, delta_ms } — tọa độ ROS frame (meters).
+// Log ra F12 console để debug; vẽ chấm đỏ lên canvas.
+
+let odomWs        = null;
+let latestOdom    = null;   // frame cuối nhận được — { x, y, yaw, ros_t, delta_ms }
+
+function startOdomStream() {
+  if (odomWs && odomWs.readyState === WebSocket.OPEN) return;
+
+  const url = `ws://${location.host}/ws/odom_stream`;
+  odomWs = new WebSocket(url);
+
+  odomWs.onopen = () => {
+    console.log('[OdomStream] Kết nối WebSocket thành công:', url);
+  };
+
+  odomWs.onmessage = (e) => {
+    let frame;
+    try {
+      frame = JSON.parse(e.data);
+    } catch {
+      console.warn('[OdomStream] Frame lỗi JSON:', e.data);
+      return;
+    }
+
+    latestOdom = frame;
+
+    // ── Log ra F12 console (xem Network→WS hoặc Console) ──────────────────
+    console.debug(
+      `[OdomStream] x=${frame.x.toFixed(3)} y=${frame.y.toFixed(3)} ` +
+      `yaw=${frame.yaw.toFixed(4)} ros_t=${frame.ros_t.toFixed(3)} ` +
+      `Δt=${frame.delta_ms.toFixed(2)}ms`
+    );
+
+    // ── Vẽ chấm xe lên canvas ─────────────────────────────────────────────
+    drawVehicleDot(frame.x, frame.y);
+  };
+
+  odomWs.onerror = (e) => {
+    console.warn('[OdomStream] WebSocket lỗi:', e);
+  };
+
+  odomWs.onclose = () => {
+    console.log('[OdomStream] WebSocket đóng — thử lại sau 3s...');
+    odomWs = null;
+    setTimeout(startOdomStream, 3000);   // tự reconnect
+  };
+}
+
+/** Vẽ chấm đỏ viền trắng tại vị trí xe (ROS frame → pixel → screen). */
+function drawVehicleDot(rosX, rosY) {
+  if (!mapHasImage || !hasValidWaypointMetadata(waypointMetadata)) return;
+
+  const pixel = rosToPixel(rosX, rosY);
+  if (!pixel) return;
+
+  const { screenX, screenY } = imagePixelToScreen(pixel.pixel_x, pixel.pixel_y);
+
+  const canvas = overlayCanvas;
+  const ctx    = canvas.getContext('2d');
+
+  // Xóa chấm cũ và vẽ lại toàn overlay (waypoints + chấm xe)
+  drawOverlay();
+
+  const RADIUS = 6;   // px — chấm 12px đường kính, vừa dễ thấy không quá to
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(screenX, screenY, RADIUS, 0, Math.PI * 2);
+  ctx.fillStyle   = '#ff2222';
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth   = 2.5;
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
 const MIN_ZOOM_STATIC = 0.1;
 const MAX_ZOOM_STATIC = 2.0;
 let MIN_ZOOM = 0.1;
@@ -803,91 +881,40 @@ async function autoLoadFirstMap() {
 //   2. Kết nối SSE /api/ros/log-stream để nhận log từ bridge_check.py NGAY LẬP TỨC.
 //      Log từ ROS hiển thị màu khác (class 'ros') để phân biệt với log web.
 
-let rosStatusInterval = null;
-let rosRunning        = false;
-let rosLogEventSource = null;
+// ── ROS Status Stream ─────────────────────────────────────────────────────────
+let rosRunning      = false;
+let rosStatusSource = null;
 
-function setConnectedUI(state) {
-  rosRunning = state === 'connected';
-  connected  = rosRunning;   // sync alias dùng ở sendGoal/sendSpeed
-
-  connDot.className = 'conn-dot ' +
-    (state === 'connected' ? 'connected' : state === 'connecting' ? 'connecting' : '');
-
-  if (state === 'connected') {
-    connStatus.textContent = 'Connected';
-  } else if (state === 'connecting') {
-    connStatus.textContent = 'Checking…';
-  } else {
-    connStatus.textContent = 'Disconnected';
-  }
+function setConnectedUI(running) {
+  rosRunning        = running;
+  connected         = running;   // alias dùng ở sendGoal/sendSpeed
+  connDot.className = 'conn-dot ' + (running ? 'connected' : '');
+  connStatus.textContent = running ? 'Connected' : 'Disconnected';
 }
 
-// addLog cho log đến từ ROS node (màu phân biệt)
-function addRosLog(level, msg) {
-  const empty = logBody.querySelector('.log-empty');
-  if (empty) empty.remove();
+function startRosStatusStream() {
+  if (rosStatusSource) return;
+  rosStatusSource = new EventSource('/api/ros/status-stream');
 
-  const now = new Date().toLocaleTimeString('vi-VN', { hour12: false });
-  const row = document.createElement('div');
-  // class 'ros' để CSS tô màu riêng, giữ thêm class level để fallback
-  row.className = `log-row ros ${level}`;
-  row.innerHTML = `
-    <span class="log-time">${now}</span>
-    <span class="log-pip"></span>
-    <span class="log-badge">ROS</span>
-    <span class="log-text">${escHtml(msg)}</span>
-  `;
-  logBody.prepend(row);
-  while (logBody.children.length > 80) logBody.lastChild.remove();
-}
-
-// ── SSE log stream từ bridge_check.py ────────────────────────────────────────
-function startRosLogStream() {
-  if (rosLogEventSource) return;   // đã kết nối
-  rosLogEventSource = new EventSource('/api/ros/log-stream');
-
-  rosLogEventSource.onmessage = (e) => {
+  rosStatusSource.onmessage = (e) => {
     try {
-      const { msg, level } = JSON.parse(e.data);
-      addRosLog(level || 'info', msg);
-    } catch { /* ignore malformed */ }
+      const { running } = JSON.parse(e.data);
+      setConnectedUI(running);
+    } catch { /* bỏ qua frame lỗi */ }
   };
 
-  rosLogEventSource.onerror = () => {
-    // Browser tự reconnect SSE — không cần xử lý thêm
+  rosStatusSource.onerror = () => {
+    // Browser tự reconnect — giữ nguyên UI
   };
 }
 
-// ── Poll trạng thái (fallback / sync UI) ─────────────────────────────────────
-async function checkRosStatus() {
-  try {
-    const res  = await fetch('/api/ros/status');
-    const data = await res.json();
-    if (data.running) {
-      if (!rosRunning) {
-        setConnectedUI('connected');
-      }
-    } else {
-      setConnectedUI('disconnected');
-    }
-  } catch {
-    setConnectedUI('disconnected');
-  }
-}
-
-function startRosStatusPolling() {
-  startRosLogStream();            // bắt đầu nhận log qua SSE ngay
-  checkRosStatus();               // poll ngay lập tức
-  if (rosStatusInterval) return;
-  rosStatusInterval = setInterval(checkRosStatus, 6000);  // 6s — chỉ để sync fallback
-}
-
-// Nút "Check ROS" — trigger check thủ công ngay lập tức
+// Nút "Check ROS" — mở lại stream nếu bị đóng
 btnConnect.addEventListener('click', () => {
-  addLog('info', 'Manual check ROS status…');
-  setConnectedUI('connecting');
-  checkRosStatus();
+  if (!rosStatusSource || rosStatusSource.readyState === EventSource.CLOSED) {
+    rosStatusSource = null;
+    startRosStatusStream();
+  }
+  addLog('info', 'Đang chờ trạng thái từ bridge_check_node…');
 });
 
 // ── Gửi tọa độ ───────────────────────────────────────────────────────────────
@@ -1046,4 +1073,5 @@ locationNameInput.addEventListener('input', () => { locationNameError.style.disp
 
 // ── Khởi động: auto-load bản đồ #1 ──────────────────────────────────────────
 autoLoadFirstMap();
-startRosStatusPolling();   // bắt đầu theo dõi ROS ngay khi trang load
+startRosStatusStream();   // lắng nghe trạng thái ROS bridge qua SSE
+startOdomStream();        // kết nối WebSocket nhận odom realtime
