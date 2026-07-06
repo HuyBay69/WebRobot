@@ -16,6 +16,8 @@ import time
 
 from flask import Blueprint, jsonify, request, Response, stream_with_context
 
+from api_ros.spawn_car_node import trigger_spawn_points_fetch
+
 # ── Cấu hình ──────────────────────────────────────────────────────────────────
 BRIDGE_TOKEN   = 'bridge-check-secret'
 CHECK_INTERVAL = 5
@@ -47,7 +49,12 @@ def api_ros_heartbeat():
 
     with _running_lock:
         global _running
+        was_running = _running
         _running = running
+
+    # Bridge vừa chuyển từ mất kết nối → kết nối: tự động lấy spawn point từ CARLA
+    if running and not was_running:
+        trigger_spawn_points_fetch()
 
     # Broadcast xuống tất cả browser đang mở SSE
     _broadcast({'running': running})

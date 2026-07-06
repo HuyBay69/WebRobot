@@ -20,6 +20,9 @@ const btnStop        = document.getElementById('btnStop');
 const logBody        = document.getElementById('logBody');
 const locationNameError = document.getElementById('locationNameError');
 
+const btnSpawnCar    = document.getElementById('btnSpawnCar');
+const spawnFeedback  = document.getElementById('spawnFeedback');
+
 let mapCanvasWrap = document.getElementById('mapCanvasWrap');
 let overlayCanvas = document.getElementById('overlayCanvas');
 let mapHud        = document.getElementById('mapHud');
@@ -47,6 +50,12 @@ let mapDrag = { active: false, startX: 0, startY: 0, origX: 0, origY: 0 };
 let mapBaseBounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
 let mapBaseFit    = { width: 0, height: 0 };
 let selectedWaypoint = null;
+
+// ── Spawn Car state ────────────────────────────────────────────────────────────
+// spawnPoints: danh sách điểm spawn lấy từ CARLA — [{ id, x, y, z, yaw }, ...]
+// Ban đầu ẩn trên bản đồ; bấm nút "Spawn Car" để hiện/ẩn, chọn 1 điểm để spawn xe.
+let spawnPoints        = [];
+let spawnPointsVisible = false;
 
 // ── Live Tracking state ───────────────────────────────────────────────────────
 // (sẽ được khởi tạo lại khi viết odom_node.py)
@@ -406,22 +415,44 @@ function drawOverlay() {
   const ctx  = overlayCanvas.getContext('2d');
   const rect = mapCanvasWrap.getBoundingClientRect();
   ctx.clearRect(0, 0, rect.width, rect.height);
-  if (!waypoints.length) return;
-  ctx.save();
-  ctx.strokeStyle = 'rgba(0, 200, 150, 0.95)';
-  ctx.fillStyle   = 'rgba(0, 200, 150, 0.95)';
-  ctx.lineWidth   = 2;
-  waypoints.forEach(wp => {
-    if (typeof wp.pixel_x !== 'number' || typeof wp.pixel_y !== 'number') return;
-    const x      = wp.pixel_x * overlayTransform.scale + overlayTransform.x;
-    const y      = wp.pixel_y * overlayTransform.scale + overlayTransform.y;
-    const radius = Math.max(1, 3 * overlayTransform.scale);
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-  });
-  ctx.restore();
+
+  if (waypoints.length) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(0, 200, 150, 0.95)';
+    ctx.fillStyle   = 'rgba(0, 200, 150, 0.95)';
+    ctx.lineWidth   = 2;
+    waypoints.forEach(wp => {
+      if (typeof wp.pixel_x !== 'number' || typeof wp.pixel_y !== 'number') return;
+      const x      = wp.pixel_x * overlayTransform.scale + overlayTransform.x;
+      const y      = wp.pixel_y * overlayTransform.scale + overlayTransform.y;
+      const radius = Math.max(1, 3 * overlayTransform.scale);
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  // ── Spawn points (CARLA) — chỉ vẽ khi người dùng bấm "Spawn Car" ──────────
+  if (spawnPointsVisible && spawnPoints.length) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.fillStyle   = 'rgba(59, 130, 246, 0.95)';   // var(--info)
+    ctx.lineWidth   = 2.5;
+    spawnPoints.forEach(sp => {
+      const pixel = rosToPixel(sp.x, sp.y);
+      if (!pixel) return;
+      const x      = pixel.pixel_x * overlayTransform.scale + overlayTransform.x;
+      const y      = pixel.pixel_y * overlayTransform.scale + overlayTransform.y;
+      const radius = Math.max(6, 11 * overlayTransform.scale);
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    });
+    ctx.restore();
+  }
 }
 
 function centerView() {
@@ -548,10 +579,32 @@ function findWaypointAt(x, y) {
   return best;
 }
 
+function findSpawnPointAt(x, y) {
+  if (!spawnPoints.length) return null;
+  let best = null, bestDist = 26;
+  spawnPoints.forEach(sp => {
+    const pixel = rosToPixel(sp.x, sp.y);
+    if (!pixel) return;
+    const dx   = pixel.pixel_x * overlayTransform.scale + overlayTransform.x - x;
+    const dy   = pixel.pixel_y * overlayTransform.scale + overlayTransform.y - y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < bestDist) { bestDist = dist; best = sp; }
+  });
+  return best;
+}
+
 function handleWaypointClick(event) {
   const rect   = mapCanvasWrap.getBoundingClientRect();
   const clickX = event.clientX - rect.left;
   const clickY = event.clientY - rect.top;
+
+  // ── Đang ở chế độ chọn spawn point → ưu tiên xử lý riêng, bỏ qua waypoint thường
+  if (spawnPointsVisible) {
+    const spHit = findSpawnPointAt(clickX, clickY);
+    if (spHit) selectSpawnPoint(spHit);
+    return;
+  }
+
   const hit    = findWaypointAt(clickX, clickY);
   if (!hit) return;
   selectedWaypoint = hit;
@@ -1057,6 +1110,98 @@ btnSendGoal.addEventListener('click', navigate);
 );
 btnStop.addEventListener('click', stopVehicle);
 
+// ══════════════════════════════════════════════════════════════════════════════
+//  SPAWN CAR
+// ══════════════════════════════════════════════════════════════════════════════
+// Luồng: bridge kết nối → backend tự lấy spawn point từ CARLA → đẩy xuống qua SSE
+// (spawnPoints, ban đầu ẩn). Bấm "Spawn Car" → hiện các điểm xanh dương trên map.
+// Chọn 1 điểm → ẩn lại các điểm → gửi (x, y, z, yaw) xuống backend để kill xe cũ
+// (nếu có) và spawn xe mới tại vị trí đó.
+
+function setSpawnFeedback(msg, type = '', timeout = 0) {
+  spawnFeedback.textContent = msg;
+  spawnFeedback.className   = `feedback${type ? ' ' + type : ''}`;
+  if (timeout) setTimeout(() => {
+    if (spawnFeedback.textContent === msg) {
+      spawnFeedback.textContent = '';
+      spawnFeedback.className   = 'feedback';
+    }
+  }, timeout);
+}
+
+function setSpawnButtonActive(active) {
+  btnSpawnCar.classList.toggle('active', active);
+  btnSpawnCar.textContent = active ? 'Chọn điểm trên bản đồ…' : 'Spawn Car';
+}
+
+btnSpawnCar.addEventListener('click', () => {
+  if (!spawnPoints.length) {
+    setSpawnFeedback('Chưa có spawn point (chờ bridge kết nối CARLA)…', 'err', 4000);
+    addLog('warn', 'Spawn Car: chưa có spawn point nào từ CARLA.');
+    return;
+  }
+  spawnPointsVisible = !spawnPointsVisible;
+  setSpawnButtonActive(spawnPointsVisible);
+  setSpawnFeedback(spawnPointsVisible ? `Chọn 1 trong ${spawnPoints.length} điểm xanh dương trên bản đồ…` : '');
+  drawOverlay();
+});
+
+async function selectSpawnPoint(sp) {
+  // Chọn xong → ẩn ngay các điểm, thoát chế độ chọn
+  spawnPointsVisible = false;
+  setSpawnButtonActive(false);
+  drawOverlay();
+
+  btnSpawnCar.disabled = true;
+  setSpawnFeedback(`Đang spawn xe tại (${sp.x.toFixed(2)}, ${sp.y.toFixed(2)})…`);
+
+  try {
+    const res  = await fetch('/api/spawn/vehicle', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ x: sp.x, y: sp.y, z: sp.z, yaw: sp.yaw }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      setSpawnFeedback(`✓ Đã gửi lệnh spawn tại (${sp.x.toFixed(2)}, ${sp.y.toFixed(2)})`, 'ok', 6000);
+      addLog('info', `Spawn Car → x=${sp.x.toFixed(3)}, y=${sp.y.toFixed(3)}, z=${sp.z.toFixed(3)}, yaw=${sp.yaw.toFixed(3)}`);
+    } else {
+      setSpawnFeedback(data.error || 'Spawn thất bại', 'err');
+      addLog('error', `Spawn Car failed: ${data.error}`);
+    }
+  } catch (err) {
+    setSpawnFeedback('Không thể kết nối server', 'err');
+    addLog('error', 'Spawn Car: không thể kết nối server');
+  } finally {
+    btnSpawnCar.disabled = false;
+  }
+}
+
+// ── SSE: nhận danh sách spawn point mỗi khi backend fetch lại từ CARLA ───────
+let spawnPointsSource = null;
+
+function startSpawnPointsStream() {
+  if (spawnPointsSource) return;
+  spawnPointsSource = new EventSource('/api/spawn/points-stream');
+
+  spawnPointsSource.onmessage = (e) => {
+    try {
+      const { points } = JSON.parse(e.data);
+      const prevCount = spawnPoints.length;
+      spawnPoints = Array.isArray(points) ? points : [];
+      if (spawnPoints.length && spawnPoints.length !== prevCount) {
+        addLog('info', `Đã nhận ${spawnPoints.length} spawn point từ CARLA.`);
+        setSpawnFeedback(`Sẵn sàng — ${spawnPoints.length} spawn point.`, 'ok', 5000);
+      }
+      if (spawnPointsVisible) drawOverlay();
+    } catch { /* bỏ qua frame lỗi */ }
+  };
+
+  spawnPointsSource.onerror = () => {
+    // Browser tự reconnect — giữ nguyên UI
+  };
+}
+
 // ── Lưu Địa Điểm ─────────────────────────────────────────────────────────────
 const btnSaveLocation   = document.getElementById('btnSaveLocation');
 const savedLocationList = document.getElementById('savedLocationList');
@@ -1135,5 +1280,6 @@ locationNameInput.addEventListener('input', () => { locationNameError.style.disp
 
 // ── Khởi động: auto-load bản đồ #1 ──────────────────────────────────────────
 autoLoadFirstMap();
-startRosStatusStream();   // lắng nghe trạng thái ROS bridge qua SSE
-startOdomStream();        // kết nối WebSocket nhận odom realtime
+startRosStatusStream();     // lắng nghe trạng thái ROS bridge qua SSE
+startOdomStream();          // kết nối WebSocket nhận odom realtime
+startSpawnPointsStream();   // lắng nghe danh sách spawn point từ CARLA qua SSE

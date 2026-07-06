@@ -11,6 +11,8 @@
   --danger:    #e85555;
   --danger-d:  #c73e3e;
   --warn:      #f59e0b;
+  --info:      #3b82f6;
+  --info-d:    #2563eb;
   --text:      #dde1ee;
   --text-dim:  #6b7490;
   --radius:    10px;
@@ -988,3 +990,31 @@ html, body {
 .card-navigation .nav-feedback-row {
   margin-top: 6px;
 }
+
+/* ==========================================================================
+   12. SPAWN CAR CARD
+   ========================================================================== */
+.card-spawn {
+  flex-shrink: 0;
+}
+
+.btn-spawn-car {
+  width: 100%;
+  height: 36px;
+  border: none;
+  border-radius: 7px;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  letter-spacing: .06em;
+  background: var(--info);
+  color: #fff;
+  transition: filter .15s, transform .1s, opacity .15s;
+}
+.btn-spawn-car:hover:not(:disabled)  { filter: brightness(1.15); }
+.btn-spawn-car:active:not(:disabled) { transform: scale(.98); }
+.btn-spawn-car.active {
+  background: var(--info-d);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, .35);
+}
+.btn-spawn-car:disabled { opacity: .35; cursor: not-allowed; }

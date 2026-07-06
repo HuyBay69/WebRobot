@@ -12,10 +12,12 @@ from werkzeug.utils import secure_filename
 from api_ros.ros_status_api import ros_status_bp, start_bridge_checker, stop_bridge_checker
 from api_ros.navigate_node  import start_navigate_node, stop_navigate_node, send_navigate_command
 from api_ros.odom_node      import start_odom_node, stop_odom_node, register_ws_client, unregister_ws_client
+from api_ros.spawn_car_node import spawn_car_bp, stop_spawn_car_node
 
 app  = Flask(__name__)
 sock = Sock(app)
 app.register_blueprint(ros_status_bp)
+app.register_blueprint(spawn_car_bp)
 
 # ── Ẩn log poll /api/ros/status (spam mỗi 6s) ────────────────────────────────
 class _SuppressRosStatusLog(logging.Filter):
@@ -243,4 +245,5 @@ if __name__ == '__main__':
         stop_odom_node()
         stop_navigate_node()
         stop_bridge_checker()
+        stop_spawn_car_node()
         print('[Web] Đã dọn dẹp xong.')
