@@ -1074,23 +1074,42 @@ html, body {
   flex-shrink: 0;
 }
 
+/* Feedback bên trái, nút Spawn Car ngắn lại và dịch sang phải — cùng bố cục
+   với hàng GO / STOP ở card Navigation. */
+.spawn-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.spawn-row .feedback {
+  margin-top: 0;
+  flex: 1;
+  min-width: 0;
+}
+
 .btn-spawn-car {
-  width: 100%;
+  width: auto;
+  min-width: 108px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 0 18px;
   height: 36px;
   border: none;
   border-radius: 7px;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 800;
   cursor: pointer;
   letter-spacing: .06em;
-  background: var(--info);
-  color: #fff;
+  background: var(--accent);
+  color: #0d1117;
   transition: filter .15s, transform .1s, opacity .15s;
 }
 .btn-spawn-car:hover:not(:disabled)  { filter: brightness(1.15); }
 .btn-spawn-car:active:not(:disabled) { transform: scale(.98); }
 .btn-spawn-car.active {
-  background: var(--info-d);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, .35);
+  background: var(--accent-d);
+  box-shadow: 0 0 0 2px rgba(0, 200, 150, .35);
 }
 .btn-spawn-car:disabled { opacity: .35; cursor: not-allowed; }

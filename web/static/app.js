@@ -1337,8 +1337,34 @@ btnLocationSave.addEventListener('click', executeSaveLocation);
 locationNameInput.addEventListener('keydown', e => { if (e.key === 'Enter') executeSaveLocation(); });
 locationNameInput.addEventListener('input', () => { locationNameError.style.display = 'none'; });
 
-// ── Khởi động: không auto-load bản đồ — chờ người dùng chọn qua Select Map ──
-addLog('info', 'Vui lòng chọn bản đồ qua nút "Select Map" để bắt đầu.');
+// ══════════════════════════════════════════════════════════════════════════════
+//  AUTO-LOAD BẢN ĐỒ — thay cho Map Manager cũ (nút "Select Map" đã bị ẩn)
+// ══════════════════════════════════════════════════════════════════════════════
+// Bản đồ giờ được chọn từ trang chính (Bước 2: Khởi động cầu nối ROS Bridge).
+// Khi bước đó thành công, home.js lưu STT bản đồ tương ứng (khớp theo tên
+// thư mục "<STT>.<tên>" trong maps/) vào localStorage key "activeMapId".
+// Ở đây, khi vào trang điều khiển, ta đọc lại giá trị đó và tự động load —
+// tái sử dụng nguyên logic loadMapById() đã có.
+async function autoLoadMapFromStorage() {
+  const storedId = localStorage.getItem('activeMapId');
+  if (!storedId) {
+    addLog('info', 'Chưa có bản đồ nào được chọn — hãy chọn bản đồ ở Bước 2 (trang chính) rồi quay lại.');
+    return;
+  }
+  try {
+    const res  = await fetch(`/api/maps/${storedId}/load`);
+    const data = await res.json();
+    if (data.ok) {
+      await loadMapById(data);
+    } else {
+      addLog('warn', `Không tìm thấy bản đồ đã chọn (#${storedId}): ${data.error || ''}`);
+    }
+  } catch (err) {
+    addLog('error', `Lỗi tự động load bản đồ: ${err}`);
+  }
+}
+
+autoLoadMapFromStorage();
 startRosStatusStream();     // lắng nghe trạng thái ROS bridge qua SSE
 startOdomStream();          // kết nối WebSocket nhận odom realtime
 startSpawnPointsStream();   // lắng nghe danh sách spawn point từ CARLA qua SSE

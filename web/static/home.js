@@ -158,6 +158,11 @@ document.getElementById('btnStep2').addEventListener('click', () => openModal('m
     busy = true;
 
     const town = mapSelect.value;
+    // STT bản đồ tương ứng lưu trong maps/ (vd: "1.Town01" → mapId = "1"),
+    // lấy từ data-map-id gắn sẵn trên từng <option>.
+    const selectedOption = mapSelect.options[mapSelect.selectedIndex];
+    const mapId = selectedOption ? selectedOption.dataset.mapId : null;
+    const mapLabel = selectedOption ? selectedOption.textContent : town;
 
     btnConfirm.disabled = true;
     mapSelect.disabled  = true;
@@ -178,13 +183,17 @@ document.getElementById('btnStep2').addEventListener('click', () => openModal('m
           return;
         }
         setTimeout(() => {
-          log(`Đang load bản đồ ${town} . . .`);
+          log(`Đang load bản đồ ${mapLabel} . . .`);
           setTimeout(() => {
             log('Đã khởi động thành công');
             // Bridge đã chạy với bản đồ đã chọn — không cho đổi bản đồ giữa
             // chừng, nên ẩn luôn nút "Khởi động" thay vì bật lại.
             btnConfirm.style.display = 'none';
             log('Nếu muốn đổi bản đồ, hãy quay trở về làm lại từ bước 1.');
+
+            // Ghi nhớ bản đồ đã chọn (khớp theo STT lưu trong maps/) để trang
+            // điều khiển (bước 3) tự động load — thay cho "Select Map" cũ.
+            linkActiveMap(mapId, mapLabel);
           }, 5000);
         }, 5000);
       })
@@ -194,6 +203,27 @@ document.getElementById('btnStep2').addEventListener('click', () => openModal('m
         btnConfirm.disabled = false;
         mapSelect.disabled  = false;
       });
+  }
+
+  /**
+   * Lưu STT bản đồ đang active vào localStorage (đọc lại ở trang /control),
+   * đồng thời báo ngay cho server để nó lấy spawn point mới từ CARLA.
+   * Nếu bản đồ #mapId chưa từng được upload (chưa có waypoint/ảnh trong
+   * maps/), server sẽ trả lỗi 404 — chỉ log cảnh báo, không chặn luồng.
+   */
+  function linkActiveMap(mapId, mapLabel) {
+    if (!mapId) return;
+    localStorage.setItem('activeMapId', mapId);
+    fetch(`/api/maps/${mapId}/load`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.ok) {
+          log(`Đã liên kết bản đồ: ${d.name} (#${d.id})`);
+        } else {
+          log(`Cảnh báo: chưa có dữ liệu bản đồ cho "${mapLabel}" (#${mapId}) — hãy tải lên bản đồ này trước.`);
+        }
+      })
+      .catch(() => log('Không thể liên kết bản đồ với server.'));
   }
 
   btnConfirm.addEventListener('click', startFlow);

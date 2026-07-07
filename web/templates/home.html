@@ -191,6 +191,12 @@
       </div>
       <p class="render-note">Không Render sẽ khiến hệ thống 3D chạy ngầm và giảm tải.</p>
 
+      <!-- Placeholder — chỗ dành cho tính năng "Thêm bản đồ mới" sẽ phát triển sau,
+           thay thế cho Map Manager / Upload Map cũ (đã ẩn ở trang điều khiển). -->
+      <button type="button" class="btn-add-map-placeholder" id="btnAddMapPlaceholder" disabled title="Tính năng sẽ được phát triển sau">
+        + Thêm bản đồ mới (sắp ra mắt)
+      </button>
+
       <div class="carla-log" id="carlaLog"></div>
 
       <div class="modal-footer-actions">
@@ -212,11 +218,11 @@
         <div class="info-row">
           <span class="info-label">Bản đồ:</span>
           <select class="map-select" id="rosBridgeMapSelect">
-            <option value="Town01_Opt">Town01_Opt</option>
-            <option value="Town02_Opt">Town02_Opt</option>
-            <option value="Town03_Opt">Town03_Opt</option>
-            <option value="/Game/Package1/Maps/BK8/BK8">/Game/Package1/Maps/BK8/BK8</option>
-            <option value="Town05_Opt">Town05_Opt</option>
+            <option value="Town01_Opt" data-map-id="1">Town01</option>
+            <option value="Town02_Opt" data-map-id="2">Town02</option>
+            <option value="Town03_Opt" data-map-id="3">Town03</option>
+            <option value="/Game/Package1/Maps/BK8/BK8" data-map-id="4">Đại học Bách Khoa Hà Nội</option>
+            <option value="Town05_Opt" data-map-id="5">Town05</option>
           </select>
         </div>
         <div class="info-row">
