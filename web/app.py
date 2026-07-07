@@ -288,8 +288,15 @@ def _cleanup():
     stop_navigate_node()
     stop_bridge_checker()
     stop_spawn_car_node()
-    stop_ros_bridge(wait_seconds=10, block=True)  # dọn Carla ROS Bridge trước (phụ thuộc vào CARLA)
-    stop_carla(wait_seconds=10, block=True)  # dọn dẹp sạch CARLA (nếu đang chạy) trước khi thoát
+    # Tắt CARLA UE4 TRƯỚC rồi mới tới ROS Bridge — không làm ngược lại nữa.
+    # Lý do đổi: cố "dọn êm" ROS Bridge trong lúc CARLA UE4 vẫn còn sống (đợi
+    # nó tự disconnect/destroy actor đúng trình tự) hay bị treo/timeout do
+    # CARLA phản hồi chậm khi đang tự thoát dở dang → dọn không sạch, để lại
+    # tiến trình mồ côi. Tắt CARLA trước (double-tap Ctrl+C, xem carla_node.py)
+    # rồi mới tắt ROS Bridge: lúc này bridge chỉ còn phát hiện mất kết nối và
+    # thoát nhanh (hoặc bị SIGTERM/SIGKILL ép thoát), không còn phải chờ CARLA.
+    stop_carla(wait_seconds=10, block=True)
+    stop_ros_bridge(wait_seconds=10, block=True)
     print('[Web] Đã dọn dẹp xong.')
 
 
