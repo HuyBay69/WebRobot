@@ -672,6 +672,15 @@ function applyWaypointData(jsonText, sourceName) {
 async function loadMapById(mapObj) {
   addLog('info', `Đang load bản đồ: ${mapObj.name}…`);
 
+  // Báo cho backend biết bản đồ này vừa được chọn/load — server sẽ tự động lấy
+  // spawn point mới từ CARLA (nếu bridge đang kết nối). Không chặn UI nếu lỗi.
+  fetch(`/api/maps/${mapObj.id}/load`)
+    .then(res => res.json())
+    .then(data => {
+      if (!data.ok) addLog('warn', `Báo load map tới server thất bại: ${data.error || ''}`);
+    })
+    .catch(err => addLog('warn', `Không báo được map load tới server: ${err}`));
+
   // Reset state
   waypoints        = [];
   waypointMetadata = null;
@@ -970,24 +979,8 @@ btnUploadSubmit.addEventListener('click', async () => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-//  AUTO-LOAD KHI KHỞI ĐỘNG (Load bản đồ #1)
+//  KHỞI ĐỘNG: không auto-load bản đồ nào — người dùng phải tự chọn qua Select Map
 // ══════════════════════════════════════════════════════════════════════════════
-async function autoLoadFirstMap() {
-  try {
-    const res  = await fetch('/api/maps');
-    const data = await res.json();
-    if (!data.ok || !data.maps.length) {
-      addLog('info', 'Chưa có bản đồ nào. Hãy upload bản đồ qua Select Map.');
-      return;
-    }
-    // Bản đồ có STT = 1 (đã được sort)
-    const first = data.maps.find(m => m.id === 1) || data.maps[0];
-    addLog('info', `Auto-load bản đồ #${first.id}: ${first.name}`);
-    await loadMapById(first);
-  } catch (err) {
-    addLog('warn', `Auto-load thất bại: ${err}`);
-  }
-}
 
 // ── ROS Status & Log Stream ───────────────────────────────────────────────────
 // Bridge checker (bridge_check.py) chạy trên máy local, push heartbeat lên Flask.
@@ -1278,8 +1271,8 @@ btnLocationSave.addEventListener('click', executeSaveLocation);
 locationNameInput.addEventListener('keydown', e => { if (e.key === 'Enter') executeSaveLocation(); });
 locationNameInput.addEventListener('input', () => { locationNameError.style.display = 'none'; });
 
-// ── Khởi động: auto-load bản đồ #1 ──────────────────────────────────────────
-autoLoadFirstMap();
+// ── Khởi động: không auto-load bản đồ — chờ người dùng chọn qua Select Map ──
+addLog('info', 'Vui lòng chọn bản đồ qua nút "Select Map" để bắt đầu.');
 startRosStatusStream();     // lắng nghe trạng thái ROS bridge qua SSE
 startOdomStream();          // kết nối WebSocket nhận odom realtime
 startSpawnPointsStream();   // lắng nghe danh sách spawn point từ CARLA qua SSE

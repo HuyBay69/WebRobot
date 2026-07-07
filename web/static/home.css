@@ -1,0 +1,410 @@
+/* ==========================================================================
+   VARIABLES & RESET (đồng bộ với style.css của trang điều khiển)
+   ========================================================================== */
+:root {
+  --bg:        #0d1117;
+  --surface:   #161b22;
+  --surface2:  #1c2230;
+  --border:    #2a3042;
+  --accent:    #00c896;
+  --accent-d:  #00a87d;
+  --danger:    #e85555;
+  --warn:      #f59e0b;
+  --info:      #3b82f6;
+  --text:      #dde1ee;
+  --text-dim:  #6b7490;
+  --radius:    10px;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  color: var(--text);
+  overflow: hidden; /* trang gọn trong 1 màn hình, không cuộn */
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(720px 480px at 10% -10%, rgba(0, 200, 150, 0.13), transparent 60%),
+    radial-gradient(640px 460px at 106% 12%, rgba(59, 130, 246, 0.11), transparent 60%),
+    var(--bg);
+}
+
+/* ==========================================================================
+   HEADER
+   ========================================================================== */
+.home-header {
+  display: flex;
+  align-items: center;
+  height: 72px;
+  flex-shrink: 0;
+  padding: 0 28px;
+  background: rgba(22, 27, 34, 0.7);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-logo {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: rgba(0, 200, 150, 0.10);
+  border: 1px solid rgba(0, 200, 150, 0.28);
+  color: var(--accent);
+}
+
+.brand-text { line-height: 1.2; }
+
+.brand-title {
+  font-size: 25px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.brand-title span { color: var(--accent); }
+
+.brand-tagline {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+/* ==========================================================================
+   MAIN LAYOUT — vừa khít 1 màn hình, không sinh thanh cuộn
+   ========================================================================== */
+.home-main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 1180px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 18px 24px 20px;
+}
+
+.content-row {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 16px;
+}
+
+.glass-panel {
+  background: rgba(22, 27, 34, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  box-shadow: 0 20px 56px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Cột trái: các bước (~2/3) ───────────────────────────────────────────── */
+.steps-panel {
+  flex: 2 1 0;
+  min-width: 0;
+  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-heading { margin-bottom: 14px; }
+.panel-heading h2 {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 3px;
+}
+.panel-heading p {
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.step-list {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.step-row {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+}
+
+/* ── Nút bước — icon ở trên cùng, chiều ngang rộng ───────────────────────── */
+.step-btn {
+  flex: 0 0 42%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  background: var(--surface2);
+  color: var(--text);
+  cursor: pointer;
+  padding: 10px 12px;
+  overflow: hidden;
+  transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+
+.step-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity .2s ease;
+  background: linear-gradient(135deg, rgba(0,200,150,.16), rgba(59,130,246,.10));
+}
+
+.step-btn:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  box-shadow: 0 10px 24px rgba(0, 200, 150, 0.16);
+}
+.step-btn:hover::before { opacity: 1; }
+.step-btn:active { transform: translateY(0); }
+
+.step-icon {
+  z-index: 1;
+  color: var(--accent);
+  display: flex;
+}
+
+.step-title {
+  z-index: 1;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: center;
+}
+
+/* Bước hiện hành (bước 3) — nhấn mạnh nhẹ */
+.step-btn--current {
+  border-color: rgba(0, 200, 150, 0.4);
+  background: rgba(0, 200, 150, 0.08);
+}
+
+/* ── Ô giải thích bên phải nút ───────────────────────────────────────────── */
+.step-desc {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  background: rgba(13, 17, 23, 0.4);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 16px;
+}
+
+.step-desc p {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  line-height: 1.45;
+}
+
+/* ── Cột phải: pipeline theo chiều dọc (~1/3) ────────────────────────────── */
+.pipeline-panel {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 22px 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.pipeline-title {
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+
+.pipeline {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pl-node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.pl-dot {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface2);
+  border: 1.5px solid var(--border);
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.pl-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-weight: 600;
+  max-width: 96px;
+  line-height: 1.25;
+}
+
+.pl-arrow {
+  color: var(--border);
+  display: flex;
+}
+
+/* Bước hiện hành trong pipeline — làm nổi bật */
+.pl-node--current .pl-dot {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #0d1117;
+  box-shadow: 0 0 0 4px rgba(0, 200, 150, 0.16);
+  animation: pulse-ring 2.2s ease-in-out infinite;
+}
+.pl-node--current .pl-label { color: var(--accent); }
+
+@keyframes pulse-ring {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(0, 200, 150, 0.16); }
+  50%      { box-shadow: 0 0 0 7px rgba(0, 200, 150, 0.08); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pl-node--current .pl-dot { animation: none; }
+}
+
+/* ==========================================================================
+   GUIDE BOX — hướng dẫn chi tiết (để trống)
+   ========================================================================== */
+.guide-box {
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 22px;
+}
+
+.guide-box h3 {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin-bottom: 10px;
+}
+
+.guide-empty {
+  min-height: 46px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+
+/* ==========================================================================
+   MODALS
+   ========================================================================== */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.65);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+}
+
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px;
+  width: 440px;
+  max-width: calc(100vw - 40px);
+  box-shadow: 0 32px 80px rgba(0,0,0,.7);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.modal-title { font-size: 16px; font-weight: 700; }
+
+.btn-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 18px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 5px;
+  flex-shrink: 0;
+  transition: color .15s, background .15s;
+}
+.btn-modal-close:hover { color: var(--text); background: var(--surface2); }
+
+.modal-placeholder {
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 13px;
+}
+
+/* ==========================================================================
+   RESPONSIVE — màn hình nhỏ / hẹp
+   ========================================================================== */
+@media (max-width: 900px) {
+  html, body { overflow: auto; }
+  .content-row { flex-direction: column; }
+  .pipeline-panel { flex-direction: row; padding: 16px 20px; }
+  .pipeline { flex-direction: row; }
+  .pl-arrow svg { transform: rotate(-90deg); }
+}
+
+@media (max-width: 640px) {
+  .step-row { flex-direction: column; }
+  .step-btn { flex: none; width: 100%; }
+}

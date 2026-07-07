@@ -55,6 +55,22 @@ html, body {
   flex-shrink: 0;
 }
 
+/* Nút Back — placeholder, hiện chưa kích hoạt */
+.btn-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text-dim);
+  cursor: not-allowed;
+  opacity: .5;
+  flex-shrink: 0;
+}
+
 .brand-name {
   font-size: 15px;
   font-weight: 700;

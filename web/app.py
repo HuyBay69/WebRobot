@@ -12,7 +12,7 @@ from werkzeug.utils import secure_filename
 from api_ros.ros_status_api import ros_status_bp, start_bridge_checker, stop_bridge_checker
 from api_ros.navigate_node  import start_navigate_node, stop_navigate_node, send_navigate_command
 from api_ros.odom_node      import start_odom_node, stop_odom_node, register_ws_client, unregister_ws_client
-from api_ros.spawn_car_node import spawn_car_bp, stop_spawn_car_node
+from api_ros.spawn_car_node import spawn_car_bp, stop_spawn_car_node, trigger_spawn_points_fetch
 
 app  = Flask(__name__)
 sock = Sock(app)
@@ -102,7 +102,14 @@ def _list_maps() -> list:
 
 # ── Routes ─────────────────────────────────────────────────────────────────────
 @app.route('/')
+def home():
+    """Trang chính — quy trình 4 bước vận hành hệ thống."""
+    return render_template('home.html')
+
+
+@app.route('/control')
 def index():
+    """Trang điều khiển xe mô phỏng (bước 3 trong quy trình)."""
     return render_template('index.html')
 
 
@@ -177,11 +184,19 @@ def api_upload_map():
 
 @app.route('/api/maps/<int:map_id>/load', methods=['GET'])
 def api_load_map(map_id: int):
-    """Trả về thông tin để load bản đồ theo ID (STT)."""
+    """
+    Trả về thông tin để load bản đồ theo ID (STT).
+    Đồng thời là điểm "map vừa load thành công" — trigger lấy spawn point mới
+    từ CARLA (nếu bridge đang kết nối). Được app.js gọi mỗi khi người dùng
+    chọn/load một bản đồ trong Map Manager.
+    """
     maps = _list_maps()
     found = next((m for m in maps if m['id'] == map_id), None)
     if not found:
         return jsonify({'ok': False, 'error': f'Không tìm thấy bản đồ #{map_id}'}), 404
+
+    trigger_spawn_points_fetch()
+
     return jsonify({'ok': True, **found})
 
 
