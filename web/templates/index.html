@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ROS2 Navigation WebUI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css" />
   <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
 </head>
@@ -98,8 +101,11 @@
           <div class="nav-label">Actual <span class="unit">(km/h)</span></div>
           <div class="nav-label">&nbsp;</div>
 
-          <input class="field-input" id="speedKmh" type="number" min="0" step="any" value="10" />
-          <div class="actual-speed-display" id="actualSpeed">— km/h</div>
+          <div class="speed-slider-wrap">
+            <input class="speed-slider" id="speedKmh" type="range" min="30" max="90" step="5" value="60" />
+            <span class="speed-slider-value" id="speedKmhValue">60</span>
+          </div>
+          <div class="actual-speed-display no-data" id="actualSpeed">— km/h</div>
           <button class="btn-estop" id="btnStop">STOP</button>
         </div>
         <div class="nav-feedback-row">

@@ -3,6 +3,8 @@ import json
 import logging
 import os
 import re
+import signal
+import sys
 import threading
 import time
 
@@ -12,12 +14,21 @@ from werkzeug.utils import secure_filename
 from api_ros.ros_status_api import ros_status_bp, start_bridge_checker, stop_bridge_checker
 from api_ros.navigate_node  import start_navigate_node, stop_navigate_node, send_navigate_command
 from api_ros.odom_node      import start_odom_node, stop_odom_node, register_ws_client, unregister_ws_client
+from api_ros.speedometer_node import (
+    start_speedometer_node, stop_speedometer_node,
+    register_ws_client as register_speedometer_ws_client,
+    unregister_ws_client as unregister_speedometer_ws_client,
+)
 from api_ros.spawn_car_node import spawn_car_bp, stop_spawn_car_node, trigger_spawn_points_fetch
+from api_ros.carla_node     import carla_bp, stop_carla
+from api_ros.ros_bridge_node import ros_bridge_bp, stop_ros_bridge
 
 app  = Flask(__name__)
 sock = Sock(app)
 app.register_blueprint(ros_status_bp)
 app.register_blueprint(spawn_car_bp)
+app.register_blueprint(carla_bp)
+app.register_blueprint(ros_bridge_bp)
 
 # ── Ẩn log poll /api/ros/status (spam mỗi 6s) ────────────────────────────────
 class _SuppressRosStatusLog(logging.Filter):
@@ -217,6 +228,21 @@ def ws_odom_stream(ws):
 # /api/odom/stream sẽ được thêm lại khi có odom_node.py
 
 
+@sock.route('/ws/speedometer_stream')
+def ws_speedometer_stream(ws):
+    """WebSocket endpoint — push tốc độ thực (km/h, quy đổi từ m/s) tới browser
+    mỗi khi speedometer_node.py có dữ liệu mới."""
+    register_speedometer_ws_client(ws)
+    try:
+        while True:
+            # Giữ connection sống — browser không cần gửi gì, chỉ nhận
+            ws.receive(timeout=60)
+    except Exception:
+        pass
+    finally:
+        unregister_speedometer_ws_client(ws)
+
+
 @app.route('/api/navigate', methods=['POST'])
 def api_navigate():
     """
@@ -246,19 +272,44 @@ def api_navigate():
 
 
 # ── Bootstrap ──────────────────────────────────────────────────────────────────
+_cleanup_done = False
+
+
+def _cleanup():
+    """Dọn dẹp tất cả node/subprocess nền — kể cả CARLA. Idempotent: chỉ chạy 1 lần
+    dù được gọi từ finally (Ctrl+C / SIGINT) hay từ signal handler (SIGTERM)."""
+    global _cleanup_done
+    if _cleanup_done:
+        return
+    _cleanup_done = True
+    print('\n[Web] Đang đóng Web Server...')
+    stop_speedometer_node()  # dọn trước — khởi động sau cùng nên dọn trước tiên (LIFO)
+    stop_odom_node()
+    stop_navigate_node()
+    stop_bridge_checker()
+    stop_spawn_car_node()
+    stop_ros_bridge(wait_seconds=10, block=True)  # dọn Carla ROS Bridge trước (phụ thuộc vào CARLA)
+    stop_carla(wait_seconds=10, block=True)  # dọn dẹp sạch CARLA (nếu đang chạy) trước khi thoát
+    print('[Web] Đã dọn dẹp xong.')
+
+
+def _handle_sigterm(signum, frame):
+    """Bắt SIGTERM (vd: `kill`, `systemctl stop`) — Ctrl+C (SIGINT) đã được xử lý
+    tự nhiên qua KeyboardInterrupt/finally bên dưới."""
+    _cleanup()
+    sys.exit(0)
+
+
 if __name__ == '__main__':
     os.makedirs(MAPS_DIR, exist_ok=True)
+    signal.signal(signal.SIGTERM, _handle_sigterm)
 
     start_bridge_checker()
     start_navigate_node()
     start_odom_node(ODOM_LOG)
+    start_speedometer_node()  # khởi động sau cùng — ưu tiên thấp hơn các node khác
 
     try:
         app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False, threaded=True)
     finally:
-        print('\n[Web] Đang đóng Web Server...')
-        stop_odom_node()
-        stop_navigate_node()
-        stop_bridge_checker()
-        stop_spawn_car_node()
-        print('[Web] Đã dọn dẹp xong.')
+        _cleanup()

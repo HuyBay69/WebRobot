@@ -20,8 +20,187 @@ function closeModal(modalId) {
 // ── Bước 1: Khởi động môi trường 3D CARLA ────────────────────────────────────
 document.getElementById('btnStep1').addEventListener('click', () => openModal('modalStep1'));
 
+(function initCarlaControl() {
+  let state = 'idle';        // 'idle' | 'starting' | 'running' | 'stopping'
+  let renderOn = false;      // mặc định: Tắt render
+
+  const btnConfirm  = document.getElementById('btnStep1Confirm');
+  const btnBack     = document.getElementById('btnStep1Back');
+  const logBox      = document.getElementById('carlaLog');
+  const toggleBtns  = document.querySelectorAll('#renderToggle .toggle-btn');
+
+  function log(text) {
+    const line = document.createElement('div');
+    line.className = 'carla-log-line';
+    line.textContent = text;
+    logBox.appendChild(line);
+    logBox.scrollTop = logBox.scrollHeight;
+  }
+
+  function setToggleDisabled(disabled) {
+    toggleBtns.forEach(b => { b.disabled = disabled; });
+  }
+
+  toggleBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      toggleBtns.forEach(b => b.classList.remove('toggle-btn--active'));
+      btn.classList.add('toggle-btn--active');
+      renderOn = btn.dataset.value === 'on';
+    });
+  });
+
+  function startFlow() {
+    state = 'starting';
+    btnConfirm.disabled = true;
+    setToggleDisabled(true);
+    log('Đang khởi động môi trường mô phỏng lái 3D CARLA . . .');
+
+    fetch('/api/carla/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ render: renderOn })
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.ok) {
+          log('Lỗi: ' + (data.error || 'Không thể khởi động'));
+          state = 'idle';
+          btnConfirm.disabled = false;
+          setToggleDisabled(false);
+          return;
+        }
+        setTimeout(() => {
+          log('Khởi động thành công');
+          state = 'running';
+          btnConfirm.textContent = 'Tạm dừng';
+          btnConfirm.classList.add('btn-confirm--danger');
+          btnConfirm.disabled = false;
+        }, 5000);
+      })
+      .catch(err => {
+        log('Lỗi kết nối: ' + err.message);
+        state = 'idle';
+        btnConfirm.disabled = false;
+        setToggleDisabled(false);
+      });
+  }
+
+  function stopFlow() {
+    state = 'stopping';
+    btnConfirm.disabled = true;
+    log('Đang tắt hệ thống mô phỏng lái 3D');
+
+    // Bổ sung: tạm dừng CARLA cũng dọn dẹp luôn Carla ROS Bridge (bước 2)
+    // nếu đang chạy, vì bridge phụ thuộc vào CARLA. Bỏ qua lỗi nếu bridge
+    // chưa từng được khởi động.
+    fetch('/api/rosbridge/stop', { method: 'POST' }).catch(() => {});
+
+    fetch('/api/carla/stop', { method: 'POST' })
+      .then(r => r.json())
+      .then(() => {
+        setTimeout(() => {
+          log('Đã tắt');
+          state = 'idle';
+          btnConfirm.textContent = 'Khởi động';
+          btnConfirm.classList.remove('btn-confirm--danger');
+          btnConfirm.disabled = false;
+          setToggleDisabled(false);
+        }, 15000);
+      })
+      .catch(err => {
+        log('Lỗi khi tắt: ' + err.message);
+        btnConfirm.disabled = false;
+      });
+  }
+
+  btnConfirm.addEventListener('click', () => {
+    if (state === 'idle') startFlow();
+    else if (state === 'running') stopFlow();
+  });
+
+  // "Quay lại" — đóng cửa sổ để trở về màn hình chính (không ảnh hưởng tiến
+  // trình CARLA đang chạy nền, vì nó độc lập với giao diện).
+  btnBack.addEventListener('click', () => closeModal('modalStep1'));
+})();
+
 // ── Bước 2: Khởi động cầu nối CARLA ROS BRIDGE ──────────────────────────────
 document.getElementById('btnStep2').addEventListener('click', () => openModal('modalStep2'));
+
+(function initRosBridgeControl() {
+  let busy = false;
+
+  const btnConfirm = document.getElementById('btnStep2Confirm');
+  const btnBack     = document.getElementById('btnStep2Back');
+  const logBox      = document.getElementById('rosBridgeLog');
+  const mapSelect   = document.getElementById('rosBridgeMapSelect');
+  const modeBtns    = document.querySelectorAll('#syncToggle .toggle-btn');
+
+  function log(text) {
+    const line = document.createElement('div');
+    line.className = 'carla-log-line';
+    line.textContent = text;
+    logBox.appendChild(line);
+    logBox.scrollTop = logBox.scrollHeight;
+  }
+
+  // Chỉ "Đồng bộ" được phép chọn — nút "Không đồng bộ" luôn disabled (chưa hỗ trợ).
+  modeBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      modeBtns.forEach(b => b.classList.remove('toggle-btn--active'));
+      btn.classList.add('toggle-btn--active');
+    });
+  });
+
+  function startFlow() {
+    if (busy) return;
+    busy = true;
+
+    const town = mapSelect.value;
+
+    btnConfirm.disabled = true;
+    mapSelect.disabled  = true;
+    log('Đang khởi động Carla ROS Bridge . . .');
+
+    fetch('/api/rosbridge/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ town: town, synchronous: true })
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (!data.ok) {
+          log('Lỗi: ' + (data.error || 'Không thể khởi động Carla ROS Bridge'));
+          busy = false;
+          btnConfirm.disabled = false;
+          mapSelect.disabled  = false;
+          return;
+        }
+        setTimeout(() => {
+          log(`Đang load bản đồ ${town} . . .`);
+          setTimeout(() => {
+            log('Đã khởi động thành công');
+            // Bridge đã chạy với bản đồ đã chọn — không cho đổi bản đồ giữa
+            // chừng, nên ẩn luôn nút "Khởi động" thay vì bật lại.
+            btnConfirm.style.display = 'none';
+            log('Nếu muốn đổi bản đồ, hãy quay trở về làm lại từ bước 1.');
+          }, 5000);
+        }, 5000);
+      })
+      .catch(err => {
+        log('Lỗi kết nối: ' + err.message);
+        busy = false;
+        btnConfirm.disabled = false;
+        mapSelect.disabled  = false;
+      });
+  }
+
+  btnConfirm.addEventListener('click', startFlow);
+
+  // "Quay lại" — đóng cửa sổ, không ảnh hưởng bridge đang chạy nền.
+  btnBack.addEventListener('click', () => closeModal('modalStep2'));
+})();
 
 // ── Bước 3: Điều khiển xe mô phỏng lái → sang trang điều khiển hiện tại ─────
 document.getElementById('btnStep3').addEventListener('click', () => {

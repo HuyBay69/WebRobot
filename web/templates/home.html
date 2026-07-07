@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>WebRobot — Hệ thống mô phỏng lái xe tự hành</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/home.css" />
 </head>
 <body>
@@ -167,26 +170,69 @@
 
   <!-- ═══════════════════ MODAL: STEP 1 — CARLA ═══════════════════ -->
   <div class="modal-overlay" id="modalStep1" style="display:none">
-    <div class="modal">
+    <div class="modal modal-carla">
       <div class="modal-header">
         <h3 class="modal-title">Khởi động môi trường 3D CARLA</h3>
         <button class="btn-modal-close" data-close="modalStep1" title="Đóng">✕</button>
       </div>
-      <div class="modal-placeholder">
-        <p>Tính năng sẽ được phát triển sau.</p>
+
+      <div class="carla-info-grid">
+        <div class="info-row">
+          <span class="info-label">Phiên bản:</span>
+          <span class="info-value">Carla 0.9.15 Packed version.</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Chế độ render:</span>
+          <div class="render-toggle" id="renderToggle">
+            <button type="button" class="toggle-btn toggle-btn--active" data-value="off">Tắt</button>
+            <button type="button" class="toggle-btn" data-value="on">Bật</button>
+          </div>
+        </div>
+      </div>
+      <p class="render-note">Không Render sẽ khiến hệ thống 3D chạy ngầm và giảm tải.</p>
+
+      <div class="carla-log" id="carlaLog"></div>
+
+      <div class="modal-footer-actions">
+        <button class="btn-secondary" id="btnStep1Back">Quay lại</button>
+        <button class="btn-confirm" id="btnStep1Confirm">Khởi động</button>
       </div>
     </div>
   </div>
 
   <!-- ═══════════════════ MODAL: STEP 2 — ROS BRIDGE ═══════════════════ -->
   <div class="modal-overlay" id="modalStep2" style="display:none">
-    <div class="modal">
+    <div class="modal modal-carla">
       <div class="modal-header">
         <h3 class="modal-title">Khởi động cầu nối CARLA ROS BRIDGE</h3>
         <button class="btn-modal-close" data-close="modalStep2" title="Đóng">✕</button>
       </div>
-      <div class="modal-placeholder">
-        <p>Tính năng sẽ được phát triển sau.</p>
+
+      <div class="carla-info-grid">
+        <div class="info-row">
+          <span class="info-label">Bản đồ:</span>
+          <select class="map-select" id="rosBridgeMapSelect">
+            <option value="Town01_Opt">Town01_Opt</option>
+            <option value="Town02_Opt">Town02_Opt</option>
+            <option value="Town03_Opt">Town03_Opt</option>
+            <option value="/Game/Package1/Maps/BK8/BK8">/Game/Package1/Maps/BK8/BK8</option>
+            <option value="Town05_Opt">Town05_Opt</option>
+          </select>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Chế độ:</span>
+          <div class="render-toggle" id="syncToggle">
+            <button type="button" class="toggle-btn toggle-btn--active" data-value="sync">Đồng bộ</button>
+            <button type="button" class="toggle-btn" data-value="async" disabled title="Chưa hỗ trợ">Không đồng bộ</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="carla-log" id="rosBridgeLog"></div>
+
+      <div class="modal-footer-actions">
+        <button class="btn-secondary" id="btnStep2Back">Quay lại</button>
+        <button class="btn-confirm" id="btnStep2Confirm">Khởi động</button>
       </div>
     </div>
   </div>

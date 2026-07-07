@@ -15,6 +15,7 @@ const goalX          = document.getElementById('goalX');
 const goalY          = document.getElementById('goalY');
 const btnSendGoal    = document.getElementById('btnSendGoal');
 const speedKmh       = document.getElementById('speedKmh');
+const speedKmhValue  = document.getElementById('speedKmhValue');
 const btnStop        = document.getElementById('btnStop');
 
 const logBody        = document.getElementById('logBody');
@@ -110,6 +111,71 @@ function startOdomStream() {
     setTimeout(startOdomStream, 3000);   // tự reconnect
   };
 }
+
+// ── Speed slider (thanh kéo tốc độ) ──────────────────────────────────────────
+// Kéo tới đâu thì số hiển thị cạnh thanh kéo cập nhật theo tới đó (live).
+speedKmhValue.textContent = speedKmh.value;   // đồng bộ với giá trị mặc định trong HTML
+speedKmh.addEventListener('input', () => {
+  speedKmhValue.textContent = speedKmh.value;
+});
+
+// ── Speedometer WebSocket (tốc độ thực) ──────────────────────────────────────
+// Nhận tốc độ thực (km/h, đã quy đổi từ m/s) từ speedometer_node.py qua
+// /ws/speedometer_stream, hiển thị vào ô "Actual" cạnh thanh kéo Speed.
+// Node này khởi động sau odom_node (ưu tiên thấp hơn) nên có thể tới muộn hơn
+// vài giây — trước khi có frame đầu tiên, ô Actual giữ trạng thái "no-data".
+
+let speedometerWs      = null;
+let lastSpeedUpdateT   = 0;      // timestamp (ms) — 0 = chưa từng nhận frame nào
+const SPEED_STALE_MS   = 2000;   // quá 2s không có frame mới → coi là "stale"
+
+function setActualSpeedDisplay(kmh) {
+  const rounded = Math.round(Math.max(0, kmh));   // số nguyên, luôn dương
+  actualSpeedEl.textContent = `${rounded} km/h`;
+  actualSpeedEl.classList.remove('no-data', 'stale');
+}
+
+function startSpeedometerStream() {
+  if (speedometerWs && speedometerWs.readyState === WebSocket.OPEN) return;
+
+  const url = `ws://${location.host}/ws/speedometer_stream`;
+  speedometerWs = new WebSocket(url);
+
+  speedometerWs.onopen = () => {
+    console.log('[SpeedometerStream] Kết nối WebSocket thành công:', url);
+  };
+
+  speedometerWs.onmessage = (e) => {
+    let frame;
+    try {
+      frame = JSON.parse(e.data);
+    } catch {
+      console.warn('[SpeedometerStream] Frame lỗi JSON:', e.data);
+      return;
+    }
+    lastSpeedUpdateT = Date.now();
+    setActualSpeedDisplay(frame.kmh);
+  };
+
+  speedometerWs.onerror = (e) => {
+    console.warn('[SpeedometerStream] WebSocket lỗi:', e);
+  };
+
+  speedometerWs.onclose = () => {
+    console.log('[SpeedometerStream] WebSocket đóng — thử lại sau 3s...');
+    speedometerWs = null;
+    setTimeout(startSpeedometerStream, 3000);   // tự reconnect
+  };
+}
+
+// Kiểm tra định kỳ — quá lâu không có frame mới thì đánh dấu "stale"
+// (chưa từng nhận frame nào thì giữ nguyên trạng thái "no-data" ban đầu).
+setInterval(() => {
+  if (lastSpeedUpdateT === 0) return;
+  if (Date.now() - lastSpeedUpdateT > SPEED_STALE_MS) {
+    actualSpeedEl.classList.add('stale');
+  }
+}, 1000);
 
 /** Vẽ chấm đỏ viền trắng tại vị trí xe (ROS frame → pixel → screen). */
 // ── Vehicle icon (car.svg) ────────────────────────────────────────────────────
@@ -1276,3 +1342,4 @@ addLog('info', 'Vui lòng chọn bản đồ qua nút "Select Map" để bắt �
 startRosStatusStream();     // lắng nghe trạng thái ROS bridge qua SSE
 startOdomStream();          // kết nối WebSocket nhận odom realtime
 startSpawnPointsStream();   // lắng nghe danh sách spawn point từ CARLA qua SSE
+startSpeedometerStream();   // kết nối WebSocket nhận tốc độ thực (Actual km/h) realtime

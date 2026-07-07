@@ -26,7 +26,7 @@
 
 html, body {
   height: 100%;
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   font-size: 14px;
   background: var(--bg);
   color: var(--text);
@@ -1001,6 +1001,66 @@ html, body {
 }
 .actual-speed-display.stale   { color: var(--warn);     border-color: rgba(245,158,11,.3); }
 .actual-speed-display.no-data { color: var(--text-dim); border-color: var(--border);       }
+
+/* ── Speed slider (thanh kéo chọn tốc độ) — thay ô input number ─────────── */
+.speed-slider-wrap {
+  height: 36px;               /* khớp chiều cao field-input / actual-speed-display */
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.speed-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  outline: none;
+  cursor: pointer;
+}
+
+/* Con kéo hình vuông — Chrome / Edge / Safari */
+.speed-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;         /* vuông, bo nhẹ góc cho đỡ gắt */
+  background: var(--accent);
+  border: 2px solid #0d1117;
+  cursor: pointer;
+  transition: filter .15s;
+}
+.speed-slider::-webkit-slider-thumb:hover  { filter: brightness(1.15); }
+.speed-slider::-webkit-slider-thumb:active { filter: brightness(0.9);  }
+
+/* Con kéo hình vuông — Firefox */
+.speed-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+.speed-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--accent);
+  border: 2px solid #0d1117;
+  cursor: pointer;
+}
+
+/* Số km/h hiện tại của thanh kéo — cập nhật live khi kéo */
+.speed-slider-value {
+  min-width: 30px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
 
 /* Feedback navigation */
 .card-navigation .nav-feedback-row {

@@ -8,6 +8,12 @@ LƯU Ý: giá trị `y` trả về đã bị ĐẢO DẤU (y = -sp.location.y) �
 y_new = -y_ros dùng khi sinh waypoints.json / vẽ map ở app.js (rosToPixel()).
 Nếu không đảo, spawn point sẽ hiển thị sai vị trí (đối xứng qua trục X) trên map.
 
+`yaw` cũng bị ĐẢO DẤU (yaw = -sp.rotation.yaw) vì lý do tương tự: lật trục Y
+(phản chiếu qua trục X) làm đảo luôn chiều quay của góc — nếu chỉ đảo Y mà
+không đảo yaw, hướng xe sẽ bị lệch so với vị trí đã lật, khiến xe spawn quay
+sai hướng. Đây cũng đúng quy ước carla_ros_bridge dùng khi chuyển hệ toạ độ
+CARLA (trái) sang ROS (phải): yaw_ros = -yaw_carla.
+
 Được spawn_car_node.py gọi như một subprocess riêng biệt (không chạy chung tiến
 trình với Flask/ROS), vì thư viện `carla` có thể yêu cầu môi trường Python khác
 với môi trường chạy Flask/rclpy.
@@ -51,8 +57,10 @@ def main():
             # (xem app.js: rosToPixel()). Không đảo thì spawn point sẽ vẽ sai vị trí trên map.
             'y':   round(-sp.location.y, 4),
             'z':   round(sp.location.z, 4),
-            # roll = pitch = 0 theo yêu cầu — chỉ giữ yaw thực tế của spawn point
-            'yaw': round(sp.rotation.yaw, 4),
+            # Đảo dấu yaw — cùng lý do đảo Y ở trên: lật trục Y làm đảo chiều quay
+            # của góc, không đảo yaw thì hướng xe sẽ sai lệch so với vị trí đã lật.
+            # roll = pitch = 0 theo yêu cầu — chỉ giữ trị tuyệt đối, đảo dấu yaw.
+            'yaw': round(-sp.rotation.yaw, 4),
         })
 
     print(json.dumps({'points': points}))
