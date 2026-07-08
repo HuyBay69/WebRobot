@@ -238,7 +238,108 @@ document.getElementById('btnStep3').addEventListener('click', () => {
 });
 
 // ── Bước 4: Tạo đồ thị và phân tích dữ liệu ─────────────────────────────────
-document.getElementById('btnStep4').addEventListener('click', () => openModal('modalStep4'));
+(function initPlotStep() {
+  const btnStep4      = document.getElementById('btnStep4');
+  const btnBack        = document.getElementById('btnStep4Back');
+  const btnPlot        = document.getElementById('btnStep4Plot');
+  const fileList        = document.getElementById('plotFileList');
+  const fileListEmpty    = document.getElementById('plotFileListEmpty');
+
+  let selectedFilename = null;
+
+  function selectFile(filename, itemEl) {
+    selectedFilename = filename;
+    fileList.querySelectorAll('.plot-file-item').forEach(el => el.classList.remove('plot-file-item--selected'));
+    itemEl.classList.add('plot-file-item--selected');
+    btnPlot.disabled = false;
+  }
+
+  function renderFiles(files) {
+    fileList.innerHTML = '';
+    selectedFilename = null;
+    btnPlot.disabled = true;
+
+    if (!files.length) {
+      fileListEmpty.textContent = 'Chưa có file dữ liệu nào trong recorded_data/. Hãy vào trang điều khiển (Bước 3) và bấm "Xuất dữ liệu" trước.';
+      fileListEmpty.style.display = 'block';
+      fileList.style.display = 'none';
+      return;
+    }
+
+    fileListEmpty.style.display = 'none';
+    fileList.style.display = 'flex';
+
+    files.forEach(f => {
+      const li = document.createElement('li');
+      li.className = 'plot-file-item';
+      li.innerHTML = `
+        <span class="plot-file-radio"></span>
+        <span class="plot-file-name">${f.display_name}</span>
+        <span class="plot-file-size">${f.size_label}</span>
+      `;
+      li.addEventListener('click', () => selectFile(f.filename, li));
+      fileList.appendChild(li);
+    });
+  }
+
+  function loadFiles() {
+    fileListEmpty.textContent = 'Đang tải danh sách file…';
+    fileListEmpty.style.display = 'block';
+    fileList.style.display = 'none';
+    fileList.innerHTML = '';
+
+    fetch('/api/datalogger/files')
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          renderFiles(data.files);
+        } else {
+          fileListEmpty.textContent = 'Lỗi tải danh sách: ' + (data.error || '');
+        }
+      })
+      .catch(() => {
+        fileListEmpty.textContent = 'Không thể kết nối server.';
+      });
+  }
+
+  btnStep4.addEventListener('click', () => {
+    openModal('modalStep4');
+    loadFiles();
+  });
+
+  btnPlot.addEventListener('click', () => {
+    if (!selectedFilename) return;
+    btnPlot.disabled = true;
+    btnPlot.textContent = 'Đang mở…';
+
+    fetch('/api/datalogger/plot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: selectedFilename }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          btnPlot.textContent = 'Đã mở — xem cửa sổ trên máy chủ';
+          setTimeout(() => {
+            btnPlot.textContent = 'Vẽ đồ thị';
+            btnPlot.disabled = false;
+          }, 3000);
+        } else {
+          alert('Lỗi: ' + (data.error || 'Không thể mở đồ thị'));
+          btnPlot.textContent = 'Vẽ đồ thị';
+          btnPlot.disabled = false;
+        }
+      })
+      .catch(() => {
+        alert('Không thể kết nối server.');
+        btnPlot.textContent = 'Vẽ đồ thị';
+        btnPlot.disabled = false;
+      });
+  });
+
+  btnBack.addEventListener('click', () => closeModal('modalStep4'));
+})();
 
 // ── Đóng modal: nút X, click ra ngoài overlay, hoặc phím Esc ────────────────
 document.querySelectorAll('.btn-modal-close[data-close]').forEach(btn => {

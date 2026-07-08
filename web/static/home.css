@@ -528,6 +528,89 @@ body {
   line-height: 1.4;
 }
 
+/* ── Modal Bước 4: danh sách file dữ liệu + Vẽ đồ thị ────────────────────── */
+.plot-modal-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.plot-file-list-empty {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  font-style: italic;
+  text-align: center;
+  padding: 20px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+
+.plot-file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.plot-file-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+}
+.plot-file-item:hover { border-color: var(--text-dim); }
+.plot-file-item--selected {
+  border-color: var(--accent);
+  background: rgba(0, 200, 150, 0.10);
+}
+
+.plot-file-radio {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--text-dim);
+  flex-shrink: 0;
+  position: relative;
+}
+.plot-file-item--selected .plot-file-radio { border-color: var(--accent); }
+.plot-file-item--selected .plot-file-radio::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.plot-file-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.plot-file-size {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
 .modal-footer-actions {
   display: flex;
   align-items: center;

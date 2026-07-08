@@ -18,6 +18,11 @@ const speedKmh       = document.getElementById('speedKmh');
 const speedKmhValue  = document.getElementById('speedKmhValue');
 const btnStop        = document.getElementById('btnStop');
 
+const missionQueueList  = document.getElementById('missionQueueList');
+const missionQueueEmpty = document.getElementById('missionQueueEmpty');
+const btnQueueClear     = document.getElementById('btnQueueClear');
+const btnCommitMission  = document.getElementById('btnCommitMission');
+
 const logBody        = document.getElementById('logBody');
 const locationNameError = document.getElementById('locationNameError');
 
@@ -51,6 +56,9 @@ let mapDrag = { active: false, startX: 0, startY: 0, origX: 0, origY: 0 };
 let mapBaseBounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
 let mapBaseFit    = { width: 0, height: 0 };
 let selectedWaypoint = null;
+
+// ── Mission queue state (queue_pending_points) ─────────────────────────────────
+let missionQueue = [];   // list[{x, y}] — hàng đợi điểm, chỉ gửi xuống server khi "Chốt hành trình"
 
 // ── Spawn Car state ────────────────────────────────────────────────────────────
 // spawnPoints: danh sách điểm spawn lấy từ CARLA — [{ id, x, y, z, yaw }, ...]
@@ -519,6 +527,46 @@ function drawOverlay() {
     });
     ctx.restore();
   }
+
+  // ── Hàng đợi hành trình (mission queue) — điểm A, B, C... nối bằng đường thẳng ──
+  if (missionQueue.length) {
+    ctx.save();
+    const pts = missionQueue
+      .map(p => rosToPixel(p.x, p.y))
+      .filter(Boolean)
+      .map(pixel => ({
+        x: pixel.pixel_x * overlayTransform.scale + overlayTransform.x,
+        y: pixel.pixel_y * overlayTransform.scale + overlayTransform.y,
+      }));
+
+    if (pts.length > 1) {
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.85)';   // var(--warn)
+      ctx.lineWidth   = 2;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    const radius = Math.max(8, 11 * overlayTransform.scale);
+    pts.forEach((p, i) => {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+      ctx.fillStyle   = 'rgba(245, 158, 11, 0.95)';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.lineWidth   = 2;
+      ctx.stroke();
+
+      ctx.fillStyle    = '#1a1300';
+      ctx.font         = 'bold 11px Inter, sans-serif';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String.fromCharCode(65 + i), p.x, p.y);
+    });
+    ctx.restore();
+  }
 }
 
 function centerView() {
@@ -678,8 +726,7 @@ function handleWaypointClick(event) {
   if (typeof hit.x === 'number' && typeof hit.y === 'number') {
     goalX.value = hit.x.toFixed(3);
     goalY.value = hit.y.toFixed(3);
-    document.getElementById('navFeedback').textContent = 'Chọn vị trí thành công. Nhấn Send Goal để gửi.';
-    document.getElementById('navFeedback').className   = 'feedback ok';
+    setNavFeedback(`Đã chọn (${hit.x.toFixed(2)}, ${hit.y.toFixed(2)}) — bấm "Thêm điểm" để đưa vào hàng đợi.`, 'ok');
     addLog('info', `Waypoint selected → x=${hit.x.toFixed(3)}, y=${hit.y.toFixed(3)}`);
   }
 }
@@ -727,6 +774,7 @@ function applyWaypointData(jsonText, sourceName) {
     overlayCanvas.style.display = 'block';
     selectedWaypoint = null;
     addLog('info', `Waypoints loaded (${sourceName}): ${waypoints.length} điểm.`);
+    setSpawnFeedback(`Đã tải ${waypoints.length} waypoint từ bản đồ.`, 'ok', 6000);
     return true;
   } catch (err) {
     addLog('error', `Waypoint parse error (${sourceName}): ${err}`);
@@ -1092,7 +1140,7 @@ btnConnect.addEventListener('click', () => {
 });
 
 // ── Gửi tọa độ ───────────────────────────────────────────────────────────────
-// ── Navigate (gộp goal + speed) ──────────────────────────────────────────────
+// ── Navigate (hàng đợi điểm → chốt hành trình) ───────────────────────────────
 const navFeedback = document.getElementById('navFeedback');
 
 function setNavFeedback(msg, type = '', timeout = 5000) {
@@ -1106,42 +1154,89 @@ function setNavFeedback(msg, type = '', timeout = 5000) {
   }, timeout);
 }
 
-async function navigate() {
-  const x   = parseFloat(goalX.value);
-  const y   = parseFloat(goalY.value);
-  const kmh = parseFloat(speedKmh.value);
+// ── Quản lý hàng đợi điểm (queue_pending_points) — hoàn toàn phía browser,
+//    chỉ gửi xuống server 1 lần khi bấm "Chốt hành trình" ───────────────────
+function addPointToQueue(x, y) {
+  missionQueue.push({ x, y });
+  renderMissionQueue();
+  drawOverlay();
+}
+
+function removePointFromQueue(index) {
+  missionQueue.splice(index, 1);
+  renderMissionQueue();
+  drawOverlay();
+}
+
+function clearMissionQueue() {
+  missionQueue = [];
+  renderMissionQueue();
+  drawOverlay();
+}
+
+function renderMissionQueue() {
+  missionQueueList.innerHTML = '';
+  missionQueueEmpty.style.display = missionQueue.length ? 'none' : 'block';
+  btnCommitMission.disabled = missionQueue.length === 0;
+
+  missionQueue.forEach((p, i) => {
+    const li = document.createElement('li');
+    li.className = 'mission-queue-item';
+    li.innerHTML = `
+      <span class="mission-queue-badge">${String.fromCharCode(65 + i)}</span>
+      <span class="mission-queue-coord">x=${p.x.toFixed(2)}, y=${p.y.toFixed(2)}</span>
+      <button type="button" class="mission-queue-remove" title="Xoá điểm này">✕</button>
+    `;
+    li.querySelector('.mission-queue-remove').addEventListener('click', () => removePointFromQueue(i));
+    missionQueueList.appendChild(li);
+  });
+}
+
+// ── "+ Thêm điểm" — nhập X/Y thủ công, đẩy vào cùng hàng đợi với điểm click trên bản đồ ──
+function addManualPoint() {
+  const x = parseFloat(goalX.value);
+  const y = parseFloat(goalY.value);
 
   if (isNaN(x) || isNaN(y)) {
     setNavFeedback('X và Y phải là số hợp lệ.', 'err', 4000);
     return;
   }
+
+  addPointToQueue(x, y);
+  setNavFeedback(`✓ Đã thêm điểm (${x.toFixed(2)}, ${y.toFixed(2)}) vào hàng đợi.`, 'ok');
+  addLog('info', `Thêm điểm vào hàng đợi → x=${x.toFixed(3)}, y=${y.toFixed(3)}`);
+}
+
+// ── "Chốt hành trình" — gửi toàn bộ hàng đợi xuống server 1 lần ─────────────
+async function commitMission() {
+  if (!missionQueue.length) return;
+
+  const kmh = parseFloat(speedKmh.value);
   if (isNaN(kmh) || kmh < 0) {
     setNavFeedback('Tốc độ phải là số >= 0.', 'err', 4000);
     return;
   }
 
-  btnSendGoal.disabled = true;
+  btnCommitMission.disabled = true;
   try {
-    const res  = await fetch('/api/navigate', {
+    const res  = await fetch('/api/mission/commit', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ x, y, speed_kmh: kmh }),
+      body:    JSON.stringify({ points: missionQueue, speed_kmh: kmh }),
     });
     const data = await res.json();
     if (data.ok) {
-      let detail = `(${x.toFixed(2)}, ${y.toFixed(2)}) — ${kmh.toFixed(1)} km/h`;
-      if (data.snapped) detail += ` → snap ${data.dist} m`;
-      setNavFeedback(`✓ Go: ${detail}`, 'ok');
-      addLog('info', `Navigate → x=${x.toFixed(3)}, y=${y.toFixed(3)}, ${kmh.toFixed(1)} km/h`);
+      setNavFeedback(`✓ Đã chốt hành trình ${data.count} điểm — ${kmh.toFixed(1)} km/h`, 'ok');
+      addLog('info', `Chốt hành trình: ${data.count} điểm, ${kmh.toFixed(1)} km/h`);
     } else {
       setNavFeedback(data.error || 'Server error', 'err');
-      addLog('error', `Navigate failed: ${data.error}`);
+      addLog('error', `Chốt hành trình thất bại: ${data.error}`);
     }
   } catch {
     setNavFeedback('Không thể kết nối server', 'err');
-    addLog('error', 'Navigate: không thể kết nối server');
+    addLog('error', 'Chốt hành trình: không thể kết nối server');
   } finally {
-    btnSendGoal.disabled = false;
+    btnCommitMission.disabled = missionQueue.length === 0;
   }
 }
 
@@ -1154,8 +1249,8 @@ async function stopVehicle() {
       body:    JSON.stringify({ stop: true }),
     });
     const data = await res.json();
-    setNavFeedback('⚠ STOP — xe đã dừng', 'err');
-    addLog('warn', 'STOP — speed=0, goal cancelled');
+    setNavFeedback('⚠ STOP — xe đã dừng, hành trình đang chạy đã huỷ', 'err');
+    addLog('warn', 'STOP — speed=0, goal cancelled, mission huỷ');
   } catch {
     setNavFeedback('Không thể kết nối server', 'err');
   } finally {
@@ -1163,11 +1258,14 @@ async function stopVehicle() {
   }
 }
 
-btnSendGoal.addEventListener('click', navigate);
-[goalX, goalY, speedKmh].forEach(el =>
-  el.addEventListener('keydown', e => { if (e.key === 'Enter') navigate(); })
+btnSendGoal.addEventListener('click', addManualPoint);
+[goalX, goalY].forEach(el =>
+  el.addEventListener('keydown', e => { if (e.key === 'Enter') addManualPoint(); })
 );
+btnQueueClear.addEventListener('click', clearMissionQueue);
+btnCommitMission.addEventListener('click', commitMission);
 btnStop.addEventListener('click', stopVehicle);
+renderMissionQueue();
 
 // ══════════════════════════════════════════════════════════════════════════════
 //  SPAWN CAR
@@ -1224,6 +1322,8 @@ async function selectSpawnPoint(sp) {
     if (data.ok) {
       setSpawnFeedback(`✓ Đã gửi lệnh spawn tại (${sp.x.toFixed(2)}, ${sp.y.toFixed(2)})`, 'ok', 6000);
       addLog('info', `Spawn Car → x=${sp.x.toFixed(3)}, y=${sp.y.toFixed(3)}, z=${sp.z.toFixed(3)}, yaw=${sp.yaw.toFixed(3)}`);
+      startNavigationStack();
+      startDataLogger();
     } else {
       setSpawnFeedback(data.error || 'Spawn thất bại', 'err');
       addLog('error', `Spawn Car failed: ${data.error}`);
@@ -1235,6 +1335,74 @@ async function selectSpawnPoint(sp) {
     btnSpawnCar.disabled = false;
   }
 }
+
+// ── Navigation stack (waypoint_publisher + ad_agent + navigation_hmi) ───────
+// Thay cho việc chạy tay navigate1.sh — tự khởi động ngay sau khi spawn xe
+// thành công, vì các node này cần có sẵn "ego vehicle" mới hoạt động được.
+async function startNavigationStack() {
+  addLog('info', 'Đang khởi động navigation stack (waypoint_publisher, ad_agent, navigation_hmi)…');
+  try {
+    const res  = await fetch('/api/navstack/start', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      addLog('info', 'Navigation stack đã khởi động xong.');
+    } else {
+      addLog('error', `Navigation stack lỗi: ${data.error}`);
+    }
+  } catch (err) {
+    addLog('error', 'Navigation stack: không thể kết nối server');
+  }
+}
+
+// ── Data Logger — ghi dữ liệu xe ra CSV nội bộ, không stream lên web ───────
+async function startDataLogger() {
+  addLog('info', 'Đang khởi động ghi dữ liệu (data logger)…');
+  try {
+    const res  = await fetch('/api/datalogger/start', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      addLog('info', 'Data logger đã bắt đầu ghi (file tạm).');
+    } else {
+      addLog('error', `Data logger lỗi: ${data.error}`);
+    }
+  } catch (err) {
+    addLog('error', 'Data logger: không thể kết nối server');
+  }
+}
+
+async function exportRecordedData() {
+  const btn = document.getElementById('btnExportData');
+  btn.disabled = true;
+  try {
+    const res  = await fetch('/api/datalogger/export', { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      addLog('info', `✓ Đã xuất dữ liệu → ${data.path}`);
+      document.getElementById('exportResultPath').textContent     = data.path;
+      document.getElementById('exportResultStart').textContent    = data.start_time;
+      document.getElementById('exportResultEnd').textContent      = data.end_time;
+      document.getElementById('exportResultDuration').textContent = data.duration;
+      document.getElementById('exportSuccessModal').style.display = 'flex';
+    } else {
+      addLog('error', `Xuất dữ liệu thất bại: ${data.error}`);
+    }
+  } catch (err) {
+    addLog('error', 'Xuất dữ liệu: không thể kết nối server');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+const btnExportData = document.getElementById('btnExportData');
+if (btnExportData) btnExportData.addEventListener('click', exportRecordedData);
+
+const exportSuccessModal = document.getElementById('exportSuccessModal');
+document.getElementById('btnExportResultClose').addEventListener('click', () => {
+  exportSuccessModal.style.display = 'none';
+});
+exportSuccessModal.addEventListener('click', e => {
+  if (e.target === exportSuccessModal) exportSuccessModal.style.display = 'none';
+});
 
 // ── SSE: nhận danh sách spawn point mỗi khi backend fetch lại từ CARLA ───────
 let spawnPointsSource = null;

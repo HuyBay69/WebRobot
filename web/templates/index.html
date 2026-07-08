@@ -86,9 +86,16 @@
       <section class="card card-spawn">
         <h3 class="section-title">SPAWN CAR</h3>
         <div class="spawn-row">
-          <div class="feedback" id="spawnFeedback">Chờ bridge kết nối để lấy spawn point…</div>
+          <div class="ego-vehicle-field" title="Loại xe — tính năng chọn xe sẽ phát triển sau">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="11" width="18" height="8" rx="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            <span>Ego Vehicle</span>
+          </div>
           <button class="btn-spawn-car" id="btnSpawnCar">Spawn Car</button>
         </div>
+        <div class="feedback" id="spawnFeedback">Chờ bridge kết nối để lấy spawn point…</div>
       </section>
 
       <section class="card card-navigation">
@@ -100,7 +107,7 @@
 
           <input class="field-input" id="goalX" type="number" step="any" placeholder="0.000" />
           <input class="field-input" id="goalY" type="number" step="any" placeholder="0.000" />
-          <button class="btn-go" id="btnSendGoal">GO</button>
+          <button class="btn-go" id="btnSendGoal" title="Thêm điểm này vào hàng đợi hành trình">Thêm điểm</button>
 
           <div class="nav-label">Speed <span class="unit">(km/h)</span></div>
           <div class="nav-label">Actual <span class="unit">(km/h)</span></div>
@@ -116,6 +123,19 @@
         <div class="nav-feedback-row">
           <div class="feedback" id="navFeedback">Chọn một vị trí trên bản đồ hoặc nhập toạ độ</div>
         </div>
+
+        <!-- ─── HÀNG ĐỢI ĐIỂM (queue_pending_points) — chốt thành active_mission_points ─── -->
+        <div class="mission-queue-wrap">
+          <div class="mission-queue-header">
+            <span class="mission-queue-title">Hàng đợi điểm</span>
+            <button class="btn-queue-clear" id="btnQueueClear" title="Xoá tất cả điểm trong hàng đợi">Xoá tất cả</button>
+          </div>
+          <div class="mission-queue-empty" id="missionQueueEmpty">
+            Chưa có điểm nào. Click waypoint trên bản đồ (điền X/Y) rồi bấm "Thêm điểm" để đưa vào hàng đợi.
+          </div>
+          <ul class="mission-queue-list" id="missionQueueList"></ul>
+          <button class="btn-commit-mission" id="btnCommitMission" disabled>Chốt hành trình</button>
+        </div>
       </section>
 
       <section class="card card-saved-loc">
@@ -124,6 +144,12 @@
           <ul id="savedLocationList"></ul>
         </div>
         <button class="btn-action" id="btnSaveLocation" style="background-color: var(--accent); color: #0d1117;">Lưu địa điểm</button>
+      </section>
+
+      <section class="card card-export-data">
+        <h3 class="section-title">GHI DỮ LIỆU</h3>
+        <p class="export-data-hint">Dữ liệu xe (toạ độ, vận tốc, gia tốc, lệnh điều khiển…) được tự động ghi vào file tạm ngay sau khi spawn xe. Bấm nút dưới để lưu lại vĩnh viễn.</p>
+        <button class="btn-action" id="btnExportData" style="background-color: var(--accent); color: #0d1117;">Xuất dữ liệu</button>
       </section>
 
       <section class="card card-log">
@@ -228,6 +254,34 @@
       <div class="modal-actions">
         <button class="btn-secondary" id="btnLocationCancel">Hủy</button>
         <button class="btn-action"    id="btnLocationSave">Lưu lại</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ MODAL: XUẤT DỮ LIỆU THÀNH CÔNG ═════════════════════ -->
+  <div class="modal-overlay" id="exportSuccessModal" style="display:none">
+    <div class="modal">
+      <h3 class="modal-title">✓ Đã xuất dữ liệu thành công</h3>
+      <div class="export-result-grid">
+        <div class="export-result-row">
+          <span class="export-result-label">Vị trí file:</span>
+          <span class="export-result-value" id="exportResultPath">—</span>
+        </div>
+        <div class="export-result-row">
+          <span class="export-result-label">Bắt đầu ghi:</span>
+          <span class="export-result-value" id="exportResultStart">—</span>
+        </div>
+        <div class="export-result-row">
+          <span class="export-result-label">Kết thúc (lúc xuất):</span>
+          <span class="export-result-value" id="exportResultEnd">—</span>
+        </div>
+        <div class="export-result-row">
+          <span class="export-result-label">Tổng thời gian ghi:</span>
+          <span class="export-result-value" id="exportResultDuration">—</span>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-action" id="btnExportResultClose">Đóng</button>
       </div>
     </div>
   </div>

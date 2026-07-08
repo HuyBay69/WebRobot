@@ -1,0 +1,54 @@
+[INFO] [launch]: All log files can be found below /home/huy/.ros/log/2026-07-08-21-54-38-963708-laptop-29224
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [carla_waypoint_publisher-1]: process started with pid [29244]
+[carla_waypoint_publisher-1] [0mWaiting for CARLA world (topic: /carla/world_info)...[0m
+[carla_waypoint_publisher-1] [0mCARLA world available. Trying to connect to localhost:2000[0m
+[carla_waypoint_publisher-1] [0mConnected to Carla.[0m
+[carla_waypoint_publisher-1] [0mWaiting for ego vehicle...[0m
+[carla_waypoint_publisher-1] [0mEgo vehicle changed.[0m
+[carla_waypoint_publisher-1] [0mCalculating route to x=299.3999938964844, y=133.2400360107422, z=0.29999998211860657[0m
+[carla_waypoint_publisher-1] [0mPublished 496 waypoints.[0m
+[carla_waypoint_publisher-1] [0mReceived goal, trigger rerouting...[0m
+[carla_waypoint_publisher-1] [0mCalculating route to x=158.0449981689453, y=29.02199935913086, z=0.0[0m
+[carla_waypoint_publisher-1] [0mPublished 311 waypoints.[0m
+[carla_waypoint_publisher-1] [0mReceived goal, trigger rerouting...[0m
+[carla_waypoint_publisher-1] [0mCalculating route to x=334.8840026855469, y=26.788999557495117, z=0.0[0m
+[carla_waypoint_publisher-1] [0mPublished 234 waypoints.[0m
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[ERROR] [carla_waypoint_publisher-1]: process[carla_waypoint_publisher-1] failed to terminate '5' seconds after receiving 'SIGINT', escalating to 'SIGTERM'
+[INFO] [carla_waypoint_publisher-1]: sending signal 'SIGTERM' to process[carla_waypoint_publisher-1]
+[carla_waypoint_publisher-1] [0mShutting down.[0m
+[carla_waypoint_publisher-1] Traceback (most recent call last):
+[carla_waypoint_publisher-1]   File "/home/huy/CARLA/bridge_ws/build/carla_waypoint_publisher/src/carla_waypoint_publisher/carla_waypoint_publisher.py", line 272, in main
+[carla_waypoint_publisher-1]     waypoint_converter.spin()
+[carla_waypoint_publisher-1]   File "/home/huy/CARLA/bridge_ws/build/ros_compatibility/src/ros_compatibility/node.py", line 292, in spin
+[carla_waypoint_publisher-1]     rclpy.spin(self, self.executor)
+[carla_waypoint_publisher-1]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 229, in spin
+[carla_waypoint_publisher-1]     executor.spin_once()
+[carla_waypoint_publisher-1]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 808, in spin_once
+[carla_waypoint_publisher-1]     self._spin_once_impl(timeout_sec)
+[carla_waypoint_publisher-1]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 797, in _spin_once_impl
+[carla_waypoint_publisher-1]     handler, entity, node = self.wait_for_ready_callbacks(timeout_sec=timeout_sec)
+[carla_waypoint_publisher-1]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 780, in wait_for_ready_callbacks
+[carla_waypoint_publisher-1]     return next(self._cb_iter)
+[carla_waypoint_publisher-1]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 681, in _wait_for_ready_callbacks
+[carla_waypoint_publisher-1]     raise ExternalShutdownException()
+[carla_waypoint_publisher-1] rclpy.executors.ExternalShutdownException
+[carla_waypoint_publisher-1] 
+[carla_waypoint_publisher-1] During handling of the above exception, another exception occurred:
+[carla_waypoint_publisher-1] 
+[carla_waypoint_publisher-1] Traceback (most recent call last):
+[carla_waypoint_publisher-1]   File "/home/huy/CARLA/bridge_ws/install/carla_waypoint_publisher/lib/carla_waypoint_publisher/carla_waypoint_publisher", line 33, in <module>
+[carla_waypoint_publisher-1]     sys.exit(load_entry_point('carla-waypoint-publisher', 'console_scripts', 'carla_waypoint_publisher')())
+[carla_waypoint_publisher-1]   File "/home/huy/CARLA/bridge_ws/build/carla_waypoint_publisher/src/carla_waypoint_publisher/carla_waypoint_publisher.py", line 281, in main
+[carla_waypoint_publisher-1]     roscomp.shutdown()
+[carla_waypoint_publisher-1]   File "/home/huy/CARLA/bridge_ws/build/ros_compatibility/src/ros_compatibility/__init__.py", line 84, in shutdown
+[carla_waypoint_publisher-1]     rclpy.shutdown()
+[carla_waypoint_publisher-1]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[carla_waypoint_publisher-1]     _shutdown(context=context)
+[carla_waypoint_publisher-1]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[carla_waypoint_publisher-1]     return context.shutdown()
+[carla_waypoint_publisher-1]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[carla_waypoint_publisher-1]     self.__context.shutdown()
+[carla_waypoint_publisher-1] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[ERROR] [carla_waypoint_publisher-1]: process has died [pid 29244, exit code 1, cmd '/home/huy/CARLA/bridge_ws/install/carla_waypoint_publisher/lib/carla_waypoint_publisher/carla_waypoint_publisher --ros-args -r __node:=carla_waypoint_publisher --params-file /tmp/launch_params_mv865xl2 --params-file /tmp/launch_params_kdm5vk8n --params-file /tmp/launch_params_ynjdshpg --params-file /tmp/launch_params_if1kpwi2'].

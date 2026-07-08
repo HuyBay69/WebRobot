@@ -245,13 +245,20 @@
 
   <!-- ═══════════════════ MODAL: STEP 4 — DATA ═══════════════════ -->
   <div class="modal-overlay" id="modalStep4" style="display:none">
-    <div class="modal">
+    <div class="modal modal-carla">
       <div class="modal-header">
         <h3 class="modal-title">Tạo đồ thị và phân tích dữ liệu</h3>
         <button class="btn-modal-close" data-close="modalStep4" title="Đóng">✕</button>
       </div>
-      <div class="modal-placeholder">
-        <p>Tính năng sẽ được phát triển sau.</p>
+
+      <p class="plot-modal-hint">Chọn 1 file dữ liệu đã ghi (mới nhất ở trên cùng), rồi bấm "Vẽ đồ thị".</p>
+
+      <div class="plot-file-list-empty" id="plotFileListEmpty">Đang tải danh sách file…</div>
+      <ul class="plot-file-list" id="plotFileList"></ul>
+
+      <div class="modal-footer-actions">
+        <button class="btn-secondary" id="btnStep4Back">Quay lại</button>
+        <button class="btn-confirm" id="btnStep4Plot" disabled>Vẽ đồ thị</button>
       </div>
     </div>
   </div>

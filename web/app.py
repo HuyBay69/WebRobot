@@ -22,6 +22,8 @@ from api_ros.speedometer_node import (
 from api_ros.spawn_car_node import spawn_car_bp, stop_spawn_car_node, trigger_spawn_points_fetch
 from api_ros.carla_node     import carla_bp, stop_carla
 from api_ros.ros_bridge_node import ros_bridge_bp, stop_ros_bridge
+from api_ros.navigation_stack_node import navstack_bp, stop_navigation_stack
+from api_ros.data_logger import data_logger_bp, stop_data_logger
 
 app  = Flask(__name__)
 sock = Sock(app)
@@ -29,6 +31,8 @@ app.register_blueprint(ros_status_bp)
 app.register_blueprint(spawn_car_bp)
 app.register_blueprint(carla_bp)
 app.register_blueprint(ros_bridge_bp)
+app.register_blueprint(navstack_bp)
+app.register_blueprint(data_logger_bp)
 
 # ── Ẩn log poll /api/ros/status (spam mỗi 6s) ────────────────────────────────
 class _SuppressRosStatusLog(logging.Filter):
@@ -271,6 +275,43 @@ def api_navigate():
     return jsonify({'ok': True, 'x': x, 'y': y, 'speed_kmh': speed_kmh})
 
 
+@app.route('/api/mission/commit', methods=['POST'])
+def api_mission_commit():
+    """
+    "Chốt hành trình" — nhận toàn bộ hàng đợi điểm (queue_pending_points, đã được
+    quản lý hoàn toàn phía browser) và forward xuống navigate_node.py dưới dạng
+    1 lệnh MISSION duy nhất. Node sẽ tự lo phần đi lần lượt qua từng điểm.
+    Body JSON:
+      { "points": [{"x": float, "y": float}, ...], "speed_kmh": float }
+    """
+    data = request.get_json(force=True, silent=True) or {}
+
+    try:
+        speed_kmh = float(data['speed_kmh'])
+    except (KeyError, ValueError, TypeError):
+        return jsonify({'ok': False, 'error': 'Cần speed_kmh (số)'}), 400
+
+    if speed_kmh < 0:
+        return jsonify({'ok': False, 'error': 'speed_kmh phải >= 0'}), 400
+
+    points = data.get('points')
+    if not isinstance(points, list) or not points:
+        return jsonify({'ok': False, 'error': 'Cần ít nhất 1 điểm trong hành trình'}), 400
+
+    coords = []
+    for i, p in enumerate(points):
+        try:
+            coords.append(float(p['x']))
+            coords.append(float(p['y']))
+        except (KeyError, ValueError, TypeError):
+            return jsonify({'ok': False, 'error': f'Điểm thứ {i + 1} thiếu x/y hợp lệ'}), 400
+
+    cmd = 'MISSION ' + ' '.join(str(v) for v in [speed_kmh] + coords)
+    send_navigate_command(cmd)
+
+    return jsonify({'ok': True, 'count': len(points), 'speed_kmh': speed_kmh})
+
+
 # ── Bootstrap ──────────────────────────────────────────────────────────────────
 _cleanup_done = False
 
@@ -288,6 +329,8 @@ def _cleanup():
     stop_navigate_node()
     stop_bridge_checker()
     stop_spawn_car_node()
+    stop_navigation_stack(wait_seconds=10, block=True)  # waypoint_publisher/ad_agent/navigation_hmi
+    stop_data_logger(wait_seconds=10, block=True)        # đóng CSV đúng cách trước khi thoát hẳn
     # Tắt CARLA UE4 TRƯỚC rồi mới tới ROS Bridge — không làm ngược lại nữa.
     # Lý do đổi: cố "dọn êm" ROS Bridge trong lúc CARLA UE4 vẫn còn sống (đợi
     # nó tự disconnect/destroy actor đúng trình tự) hay bị treo/timeout do

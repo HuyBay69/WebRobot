@@ -13,7 +13,6 @@ import os
 import signal
 import subprocess
 import threading
-import time
 
 from flask import Blueprint, jsonify, request
 
@@ -23,6 +22,28 @@ CARLA_SH_PATH = os.path.expanduser('~/CARLA/carla_packed_linux/CarlaUE4.sh')
 
 _lock = threading.Lock()
 _proc = None  # subprocess.Popen hiện tại (None nếu CARLA chưa chạy)
+
+
+def _log(msg):
+    print(f'[CarlaNode] {msg}', flush=True)
+
+
+def _get_descendant_pids(pid):
+    """Quét /proc lấy toàn bộ PID con/cháu (đệ quy) của `pid`. Dùng làm lớp dự
+    phòng khi SIGTERM không đủ để CarlaUE4.sh + tiến trình UE4 thật sự thoát
+    hết (vd: crash reporter/shader-compile worker còn sót) — không phụ thuộc
+    process group nên chắc chắn quét được toàn bộ cây, giống pattern đã dùng
+    ở ros_bridge_node.py / navigation_stack_node.py."""
+    descendants = []
+    try:
+        with open(f'/proc/{pid}/task/{pid}/children') as f:
+            direct = [int(p) for p in f.read().split()]
+    except (FileNotFoundError, ProcessLookupError, PermissionError):
+        direct = []
+    for child_pid in direct:
+        descendants.append(child_pid)
+        descendants.extend(_get_descendant_pids(child_pid))
+    return descendants
 
 
 def is_running():
@@ -38,9 +59,11 @@ def start_carla(render: bool):
     global _proc
     with _lock:
         if _proc is not None and _proc.poll() is None:
+            _log('Đã đang chạy, bỏ qua lệnh khởi động mới.')
             return False, 'CARLA đã đang chạy'
 
         if not os.path.isfile(CARLA_SH_PATH):
+            _log(f'✗ Không tìm thấy file: {CARLA_SH_PATH}')
             return False, f'Không tìm thấy file: {CARLA_SH_PATH}'
 
         env = os.environ.copy()
@@ -51,6 +74,7 @@ def start_carla(render: bool):
         if not render:
             cmd.append('-RenderOffScreen')
 
+        _log(f'Đang khởi chạy: {" ".join(cmd)}  (render={render})')
         try:
             _proc = subprocess.Popen(
                 cmd,
@@ -60,79 +84,57 @@ def start_carla(render: bool):
                 stderr=subprocess.DEVNULL,
             )
         except Exception as e:
+            _log(f'✗ Lỗi khởi chạy: {e}')
             return False, str(e)
 
+        _log(f'✓ Đã chạy — PID={_proc.pid}')
         return True, 'started'
 
 
 def stop_carla(wait_seconds=15, block=True):
     """Dừng CARLA đang chạy (nếu có).
 
-    CarlaUE4 (Unreal Engine) thường KHÔNG thoát ngay với 1 lần Ctrl+C — SIGINT
-    đầu tiên chỉ kích hoạt quy trình thoát "êm" của engine. Giống hệt thao tác
-    thủ công trên terminal: phải bấm Ctrl+C thêm 1 lần nữa NGAY SAU đó (cách
-    nhau một khoảng ngắn, không phải chờ vài giây) thì CarlaUE4 mới chấp nhận
-    thoát ngay lập tức. Nếu khoảng cách giữa 2 lần quá xa, lần SIGINT thứ 2 chỉ
-    bị coi như một lần bấm bình thường khác chứ không có tác dụng "double-tap"
-    ép thoát — đây là lý do cách cũ (3 lần, cách nhau 2s) không ổn định.
-
-    Vì vậy ở đây gửi SIGINT (đúng tín hiệu Ctrl+C) 2 lần, cách nhau một
-    khoảng ngắn (_DOUBLE_TAP_GAP); nếu sau đó vẫn còn sống mới fallback sang
-    SIGTERM rồi SIGKILL để đảm bảo dọn sạch.
-
     block=True  → chờ tối đa `wait_seconds` giây cho tiến trình thoát hẳn rồi mới return
                   (dùng khi tắt hẳn Web Server, cần dọn dẹp sạch trước khi thoát).
     block=False → gửi tín hiệu dừng rồi return ngay (không chặn request Flask); một thread
-                  nền sẽ tiếp tục theo dõi và gửi thêm tín hiệu / SIGKILL nếu quá hạn. Dùng
-                  cho nút "Tạm dừng" trên giao diện — nơi phần hiển thị "đang tắt" / "đã tắt"
-                  do frontend tự đếm thời gian.
+                  nền sẽ tiếp tục theo dõi và SIGKILL nếu quá hạn. Dùng cho nút "Tạm dừng"
+                  trên giao diện — nơi phần hiển thị "đang tắt" / "đã tắt" do frontend tự
+                  đếm thời gian.
     """
     global _proc
     with _lock:
         proc = _proc
         if proc is None or proc.poll() is not None:
             _proc = None
+            _log('Không có tiến trình nào đang chạy, bỏ qua lệnh dừng.')
             return False, 'CARLA không chạy'
+        _log(f'Đang dừng (PID={proc.pid}) — gửi SIGTERM...')
         try:
-            pgid = os.getpgid(proc.pid)
-        except ProcessLookupError:
-            pgid = None
-
-    def _send(sig):
-        try:
-            if pgid is not None:
-                os.killpg(pgid, sig)
-            else:
-                proc.send_signal(sig)
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
         except (ProcessLookupError, PermissionError):
             pass
 
-    _DOUBLE_TAP_GAP = 0.3  # giây — khoảng cách giữa 2 lần Ctrl+C, mô phỏng thao tác bấm tay nhanh
-
     def _wait_and_force_kill():
         global _proc
-
-        # "Double-tap" Ctrl+C: SIGINT lần 1 để engine bắt đầu thoát êm, SIGINT
-        # lần 2 gửi ngay sau đó (cách nhau rất ngắn) để ép thoát thật sự —
-        # giống hệt cách bấm tay. Bỏ qua lần 2 nếu tiến trình đã thoát rồi.
-        _send(signal.SIGINT)
-        time.sleep(_DOUBLE_TAP_GAP)
-        if proc.poll() is None:
-            _send(signal.SIGINT)
-
         try:
-            remaining = max(wait_seconds - _DOUBLE_TAP_GAP, 5)
-            proc.wait(timeout=remaining)
+            proc.wait(timeout=wait_seconds)
+            _log('✓ Đã thoát sạch.')
         except subprocess.TimeoutExpired:
-            # Vẫn còn sống sau double-tap Ctrl+C — leo thang: SIGTERM rồi SIGKILL.
-            _send(signal.SIGTERM)
+            _log(f'✗ Không thoát kịp trong {wait_seconds}s — dọn cưỡng bức cả cây con/cháu.')
+            descendants = _get_descendant_pids(proc.pid)
+            for pid in reversed(descendants):
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
             try:
+                proc.kill()
                 proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                _send(signal.SIGKILL)
+            except Exception:
+                pass
+            _log('✓ Đã dọn cưỡng bức xong.')
         except Exception:
             pass
-
         with _lock:
             if _proc is proc:
                 _proc = None
