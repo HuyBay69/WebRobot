@@ -13,12 +13,18 @@ import os
 import signal
 import subprocess
 import threading
+import time
 
 from flask import Blueprint, jsonify, request
 
 carla_bp = Blueprint('carla_bp', __name__)
 
 CARLA_SH_PATH = os.path.expanduser('~/CARLA/carla_packed_linux/CarlaUE4.sh')
+
+# web/api_ros/carla_node.py → lên 1 cấp là web/ → ghi log vào web/logs/
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOG_DIR = os.path.join(_BASE_DIR, 'logs')
+CARLA_LOG_PATH = os.path.join(LOG_DIR, 'carla_ue4.log')
 
 _lock = threading.Lock()
 _proc = None  # subprocess.Popen hiện tại (None nếu CARLA chưa chạy)
@@ -51,6 +57,45 @@ def is_running():
         return _proc is not None and _proc.poll() is None
 
 
+def _kill_orphaned_carla_processes():
+    """Quét toàn hệ thống tìm tiến trình CarlaUE4-Linux-Shipping CHƯA được biến
+    _proc theo dõi — thường sót lại từ phiên Flask trước bị tắt đột ngột (đóng
+    terminal, kill -9 cả start_web.sh...) khiến stop_carla() không kịp chạy.
+    Tiến trình mồ côi này vẫn chiếm cổng 2000, khiến CARLA mới khởi động sau
+    không kết nối được (bridge/spawn_car timeout dù log vẫn báo "đã chạy" bình
+    thường, vì đó là PID của tiến trình MỚI, không phải tiến trình cũ đang thật
+    sự giữ cổng). Gọi hàm này ngay trước khi spawn phiên CARLA mới."""
+    try:
+        result = subprocess.run(
+            ['pgrep', '-f', 'CarlaUE4-Linux-Shipping'],
+            capture_output=True, text=True, timeout=5,
+        )
+        pids = [int(p) for p in result.stdout.split() if p.strip().isdigit()]
+    except Exception as e:
+        _log(f'⚠ Không quét được tiến trình CarlaUE4 mồ côi (bỏ qua bước này): {e}')
+        return
+
+    if not pids:
+        return
+
+    _log(f'⚠ Phát hiện {len(pids)} tiến trình CarlaUE4 mồ côi từ phiên trước (PID={pids}) — đang dọn dẹp trước khi khởi động phiên mới...')
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+
+    time.sleep(2)  # cho tiến trình cũ kịp thoát + nhả cổng 2000 trước khi CARLA mới bind vào
+
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGKILL)  # dự phòng nếu SIGTERM chưa đủ trong 2s
+        except ProcessLookupError:
+            pass  # đã thoát sạch bằng SIGTERM — bình thường
+
+    _log('✓ Đã dọn xong tiến trình mồ côi.')
+
+
 def start_carla(render: bool):
     """Khởi động CarlaUE4.sh dưới dạng subprocess nền, chạy liên tục cho đến khi bị dừng.
     render=True  → chạy có hiển thị màn hình (mặc định).
@@ -66,6 +111,8 @@ def start_carla(render: bool):
             _log(f'✗ Không tìm thấy file: {CARLA_SH_PATH}')
             return False, f'Không tìm thấy file: {CARLA_SH_PATH}'
 
+        _kill_orphaned_carla_processes()
+
         env = os.environ.copy()
         env['__NV_PRIME_RENDER_OFFLOAD'] = '1'
         env['__GLX_VENDOR_LIBRARY_NAME'] = 'nvidia'
@@ -74,14 +121,16 @@ def start_carla(render: bool):
         if not render:
             cmd.append('-RenderOffScreen')
 
-        _log(f'Đang khởi chạy: {" ".join(cmd)}  (render={render})')
+        _log(f'Đang khởi chạy: {" ".join(cmd)}  (render={render})  — log: {CARLA_LOG_PATH}')
         try:
+            os.makedirs(LOG_DIR, exist_ok=True)
+            log_f = open(CARLA_LOG_PATH, 'w')
             _proc = subprocess.Popen(
                 cmd,
                 env=env,
                 start_new_session=True,  # tạo process group riêng để có thể kill sạch (kể cả tiến trình con)
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=log_f,
+                stderr=subprocess.STDOUT,
             )
         except Exception as e:
             _log(f'✗ Lỗi khởi chạy: {e}')

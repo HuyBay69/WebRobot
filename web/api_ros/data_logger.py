@@ -242,7 +242,6 @@ _BASE_DIR          = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_RECORD_DIR    = os.path.join(_BASE_DIR, 'data_record')
 RECORDED_DATA_DIR  = os.path.join(_BASE_DIR, 'recorded_data')
 TEMP_CSV_PATH      = os.path.join(DATA_RECORD_DIR, 'carla_data_local.csv')
-TEMP_WAYPOINTS_PATH = os.path.join(DATA_RECORD_DIR, 'mission_waypoints.json')  # ghi bởi navigate_node.py mỗi lần Chốt hành trình
 DATA_LOGGER_SCRIPT = os.path.abspath(__file__)
 PLOT_SCRIPT_PATH   = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'plot_carla_data.py')  # api_ros/plot_carla_data.py
 
@@ -305,13 +304,6 @@ def start_data_logger():
 
     with _dl_lock:
         os.makedirs(DATA_RECORD_DIR, exist_ok=True)
-        # Xoá file waypoints của phiên TRƯỚC (nếu có) — tránh lẫn toạ độ mission
-        # cũ vào phiên ghi mới nếu chưa kịp Chốt hành trình nào trong phiên này.
-        try:
-            if os.path.isfile(TEMP_WAYPOINTS_PATH):
-                os.remove(TEMP_WAYPOINTS_PATH)
-        except Exception:
-            pass
         _dl_log(f'Đang khởi chạy — ghi ra {TEMP_CSV_PATH}')
         try:
             _dl_proc = subprocess.Popen(
@@ -397,19 +389,6 @@ def export_recorded_data():
         shutil.copyfile(TEMP_CSV_PATH, dest_path)
     except Exception as e:
         return False, str(e), None
-
-    # Copy kèm file toạ độ mission (nếu navigate_node.py đã từng ghi) — đặt tên
-    # theo cặp với CSV (carla_data_<ts>.csv ↔ carla_data_<ts>_waypoints.json) để
-    # plot_carla_data.py tự tìm và đánh dấu đúng điểm đích đã yêu cầu. Không bắt
-    # buộc phải có — nếu chưa từng Chốt hành trình nào thì bỏ qua, không lỗi.
-    if os.path.isfile(TEMP_WAYPOINTS_PATH):
-        try:
-            shutil.copyfile(
-                TEMP_WAYPOINTS_PATH,
-                os.path.join(RECORDED_DATA_DIR, f'carla_data_{ts}_waypoints.json'),
-            )
-        except Exception as e:
-            _dl_log(f'⚠ Không copy được file waypoints kèm theo: {e}')
 
     with _dl_lock:
         start_time = _dl_recording_start

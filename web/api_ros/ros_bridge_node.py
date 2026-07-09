@@ -21,6 +21,11 @@ from flask import Blueprint, jsonify, request
 
 ros_bridge_bp = Blueprint('ros_bridge_bp', __name__)
 
+# web/api_ros/ros_bridge_node.py → lên 1 cấp là web/ → ghi log vào web/logs/
+_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+LOG_DIR = os.path.join(_BASE_DIR, 'logs')
+ROS_BRIDGE_LOG_PATH = os.path.join(LOG_DIR, 'ros_bridge.log')
+
 _lock = threading.Lock()
 _proc = None          # subprocess.Popen hiện tại (None nếu bridge chưa chạy)
 _current_town = None  # bản đồ (town) đang chạy cùng bridge, nếu có
@@ -76,13 +81,15 @@ def start_ros_bridge(town: str, synchronous: bool = True):
             f'synchronous_mode:={"True" if synchronous else "False"}',
         ]
 
-        _log(f'Đang khởi chạy: {" ".join(cmd)}')
+        _log(f'Đang khởi chạy: {" ".join(cmd)}  — log: {ROS_BRIDGE_LOG_PATH}')
         try:
+            os.makedirs(LOG_DIR, exist_ok=True)
+            log_f = open(ROS_BRIDGE_LOG_PATH, 'w')
             _proc = subprocess.Popen(
                 cmd,
                 start_new_session=True,  # process group riêng để kill sạch (kể cả tiến trình con)
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=log_f,
+                stderr=subprocess.STDOUT,
             )
         except Exception as e:
             _log(f'✗ Lỗi khởi chạy: {e}')

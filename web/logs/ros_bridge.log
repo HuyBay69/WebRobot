@@ -1,0 +1,45 @@
+[INFO] [launch]: All log files can be found below /home/huy/.ros/log/2026-07-09-20-44-54-270260-laptop-18110
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [bridge-1]: process started with pid [18111]
+[bridge-1] [0mTrying to connect to localhost:2000[0m
+[bridge-1] [0mLoading town '/Game/Package1/Maps/BK8/BK8' (previous: 'Carla/Maps/Town01_Opt').[0m
+[bridge-1] [0msynchronous_mode: True[0m
+[bridge-1] [0mfixed_delta_seconds: 0.05[0m
+[bridge-1] [0mParameters:[0m
+[bridge-1] [0m  host: localhost[0m
+[bridge-1] [0m  port: 2000[0m
+[bridge-1] [0m  timeout: 30[0m
+[bridge-1] [0m  passive: False[0m
+[bridge-1] [0m  synchronous_mode: True[0m
+[bridge-1] [0m  synchronous_mode_wait_for_vehicle_control_command: False[0m
+[bridge-1] [0m  fixed_delta_seconds: 0.05[0m
+[bridge-1] [0m  register_all_sensors: True[0m
+[bridge-1] [0m  town: /Game/Package1/Maps/BK8/BK8[0m
+[bridge-1] [0m  ego_vehicle: {'role_name': 'hero'}[0m
+[bridge-1] [0mCreated Spectator(id=169)[0m
+[bridge-1] [0mCreated TrafficLightsSensor(id=10000)[0m
+[bridge-1] [0mCreated ObjectSensor(id=10001)[0m
+[bridge-1] [0mCreated ActorListSensor(id=10002)[0m
+[bridge-1] [0mCreated EgoVehicle(id=170)[0m
+[bridge-1] [0mCreated MarkerSensor(id=10003)[0m
+[bridge-1] [0mCreated OpenDriveSensor(id=10004)[0m
+[bridge-1] [0mCreated RgbCamera(id=171)[0m
+[bridge-1] [0mCreated RgbCamera(id=172)[0m
+[bridge-1] [0mCreated ActorControl(id=10005)[0m
+[bridge-1] [0mCreated Radar(id=173)[0m
+[bridge-1] [0mCreated Gnss(id=174)[0m
+[bridge-1] [0mCreated ImuSensor(id=175)[0m
+[bridge-1] [0mCreated CollisionSensor(id=176)[0m
+[bridge-1] [0mCreated LaneInvasionSensor(id=177)[0m
+[bridge-1] [0mCreated TFSensor(id=10006)[0m
+[bridge-1] [0mCreated ObjectSensor(id=10007)[0m
+[bridge-1] [0mCreated OdometrySensor(id=10008)[0m
+[bridge-1] [0mCreated SpeedometerSensor(id=10009)[0m
+[bridge-1] [0mCreated ActorControl(id=10010)[0m
+[bridge-1] [0mRemoved RgbCamera(id=171)[0m
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[bridge-1] [33mRgbCamera(172): Expected Frame 24303 not received[0m
+[ERROR] [bridge-1]: process[bridge-1] failed to terminate '5' seconds after receiving 'SIGINT', escalating to 'SIGTERM'
+[INFO] [bridge-1]: sending signal 'SIGTERM' to process[bridge-1]
+[bridge-1] [0mShutting down...[0m
+[bridge-1] Failed to publish log message to rosout: publisher's context is invalid, at ./src/rcl/publisher.c:389

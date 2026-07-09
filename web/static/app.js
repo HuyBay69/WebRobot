@@ -59,6 +59,8 @@ let selectedWaypoint = null;
 
 // ── Mission queue state (queue_pending_points) ─────────────────────────────────
 let missionQueue = [];   // list[{x, y}] — hàng đợi điểm, chỉ gửi xuống server khi "Chốt hành trình"
+let routePreviewSegments = [];  // list[list[{x,y}]] — từng CHẶNG riêng (xe→A, A→B...) để tô màu so le, chỉ để vẽ, không publish gì
+let routePreviewTimer = null;   // debounce — tránh gọi API dồn dập khi thêm/xoá điểm liên tục
 
 // ── Spawn Car state ────────────────────────────────────────────────────────────
 // spawnPoints: danh sách điểm spawn lấy từ CARLA — [{ id, x, y, z, yaw }, ...]
@@ -96,7 +98,21 @@ function startOdomStream() {
       return;
     }
 
+    const isFirstOdomFrame = (latestOdom === null);
     latestOdom = frame;
+
+    // Nếu đã có điểm trong hàng đợi nhưng preview chưa tính được (lúc thêm điểm
+    // chưa có odometry) thì tính lại NGAY KHI vừa có frame odometry ĐẦU TIÊN.
+    // QUAN TRỌNG: chỉ kích hoạt ở đúng lần chuyển từ chưa có -> có (isFirstOdomFrame),
+    // KHÔNG lặp lại ở mọi frame sau đó — nếu không, vì odom tới dồn dập (~50ms/lần,
+    // nhanh hơn nhiều so với 300ms debounce), scheduleRoutePreviewUpdate() sẽ liên
+    // tục clearTimeout() rồi đặt lại hẹn giờ mới trước khi nó kịp đếm đủ 300ms để
+    // tự chạy — tạo vòng lặp vô hạn khiến updateRoutePreview() KHÔNG BAO GIỜ tự
+    // động thực thi được (đây chính là bug đã gặp — gọi tay thì chạy vì bỏ qua
+    // hẳn hẹn giờ, còn để tự động thì never-ending reset).
+    if (isFirstOdomFrame && missionQueue.length) {
+      scheduleRoutePreviewUpdate();
+    }
 
     // ── Log ra F12 console ─────────────────────────────────────────────────
     console.debug(
@@ -528,7 +544,69 @@ function drawOverlay() {
     ctx.restore();
   }
 
-  // ── Hàng đợi hành trình (mission queue) — điểm A, B, C... nối bằng đường thẳng ──
+  // ── Preview tuyến đường (route_preview.py) — đường THẬT theo bản đồ (không
+  // phải đường thẳng). Mỗi CHẶNG (xe→A, A→B, B→C...) tô màu so le cam/xanh để
+  // dễ phân biệt ranh giới từng đoạn, kèm dấu mũi tên "›" trắng chỉ chiều di
+  // chuyển. Nổi bật hơn hẳn các chấm waypoint nền (teal, nhỏ).
+  const ROUTE_SEGMENT_COLORS = ['rgba(255, 145, 0, 0.95)', 'rgba(41, 121, 255, 0.95)']; // cam / xanh dương, xen kẽ
+  if (routePreviewSegments.length) {
+    ctx.save();
+    routePreviewSegments.forEach((segment, segIdx) => {
+      const rp = segment
+        .map(p => rosToPixel(p.x, p.y))
+        .filter(Boolean)
+        .map(pixel => ({
+          x: pixel.pixel_x * overlayTransform.scale + overlayTransform.x,
+          y: pixel.pixel_y * overlayTransform.scale + overlayTransform.y,
+        }));
+      if (rp.length < 2) return;
+
+      const color = ROUTE_SEGMENT_COLORS[segIdx % ROUTE_SEGMENT_COLORS.length];
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth   = Math.max(3, 4 * overlayTransform.scale);
+      ctx.lineCap     = 'round';
+      ctx.lineJoin    = 'round';
+      ctx.beginPath();
+      rp.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+      ctx.stroke();
+
+      // Dấu chevron "›" chỉ chiều di chuyển, đặt cách đều theo khoảng cách
+      // pixel (không phải theo index) để mật độ đều bất kể route dài/ngắn.
+      const CHEVRON_SPACING_PX = 46;
+      const chevronSize = Math.max(6, 7 * overlayTransform.scale);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.lineWidth   = 2;
+      let distSinceLast = CHEVRON_SPACING_PX; // vẽ luôn 1 cái ngay đầu đoạn
+      for (let i = 1; i < rp.length; i++) {
+        const dx = rp[i].x - rp[i - 1].x;
+        const dy = rp[i].y - rp[i - 1].y;
+        const segLen = Math.hypot(dx, dy);
+        if (segLen < 1e-6) continue;
+        distSinceLast += segLen;
+        if (distSinceLast >= CHEVRON_SPACING_PX) {
+          distSinceLast = 0;
+          const angle = Math.atan2(dy, dx);
+          const midX  = (rp[i].x + rp[i - 1].x) / 2;
+          const midY  = (rp[i].y + rp[i - 1].y) / 2;
+          ctx.save();
+          ctx.translate(midX, midY);
+          ctx.rotate(angle);
+          ctx.beginPath();
+          ctx.moveTo(-chevronSize, -chevronSize * 0.65);
+          ctx.lineTo(chevronSize * 0.45, 0);
+          ctx.lineTo(-chevronSize, chevronSize * 0.65);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+    });
+    ctx.restore();
+  }
+
+  // ── Hàng đợi hành trình (mission queue) — chỉ đánh dấu điểm A, B, C... bằng
+  // chấm tròn + nhãn, KHÔNG vẽ đường nối thẳng nữa (đã có đường preview thật
+  // theo bản đồ ở trên đảm nhiệm việc thể hiện tuyến đường).
   if (missionQueue.length) {
     ctx.save();
     const pts = missionQueue
@@ -538,16 +616,6 @@ function drawOverlay() {
         x: pixel.pixel_x * overlayTransform.scale + overlayTransform.x,
         y: pixel.pixel_y * overlayTransform.scale + overlayTransform.y,
       }));
-
-    if (pts.length > 1) {
-      ctx.strokeStyle = 'rgba(245, 158, 11, 0.85)';   // var(--warn)
-      ctx.lineWidth   = 2;
-      ctx.setLineDash([5, 4]);
-      ctx.beginPath();
-      pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
 
     const radius = Math.max(8, 11 * overlayTransform.scale);
     pts.forEach((p, i) => {
@@ -1156,21 +1224,75 @@ function setNavFeedback(msg, type = '', timeout = 5000) {
 
 // ── Quản lý hàng đợi điểm (queue_pending_points) — hoàn toàn phía browser,
 //    chỉ gửi xuống server 1 lần khi bấm "Chốt hành trình" ───────────────────
+
 function addPointToQueue(x, y) {
   missionQueue.push({ x, y });
   renderMissionQueue();
   drawOverlay();
+  scheduleRoutePreviewUpdate();
 }
 
 function removePointFromQueue(index) {
   missionQueue.splice(index, 1);
   renderMissionQueue();
   drawOverlay();
+  scheduleRoutePreviewUpdate();
 }
 
 function clearMissionQueue() {
   missionQueue = [];
   renderMissionQueue();
+  drawOverlay();
+  clearTimeout(routePreviewTimer);
+  routePreviewSegments = [];
+  drawOverlay();
+}
+
+// ── Preview tuyến đường (route_preview.py) — chỉ để hình dung trước, KHÔNG
+// publish/điều khiển xe thật. Tính từ vị trí xe hiện tại (latestOdom) nối qua
+// từng điểm trong hàng đợi theo đúng thứ tự A, B, C... Debounce 300ms để không
+// gọi API dồn dập khi người dùng click nhiều điểm liên tiếp nhanh.
+function scheduleRoutePreviewUpdate() {
+  clearTimeout(routePreviewTimer);
+  routePreviewTimer = setTimeout(updateRoutePreview, 300);
+}
+
+async function updateRoutePreview() {
+  if (!missionQueue.length) {
+    routePreviewSegments = [];
+    drawOverlay();
+    return;
+  }
+  if (!latestOdom) {
+    // Chưa có vị trí xe (chưa spawn / chưa nhận odometry lần nào) — không có
+    // điểm bắt đầu để tính route, bỏ qua lần này (sẽ tự tính lại khi có điểm
+    // mới hoặc có odometry, xem hook trong odomWs.onmessage).
+    console.log('[RoutePreview] Bỏ qua — chưa có latestOdom (chưa spawn xe / chưa nhận frame đầu tiên).');
+    return;
+  }
+
+  const points = [[latestOdom.x, latestOdom.y], ...missionQueue.map(p => [p.x, p.y])];
+  console.log('[RoutePreview] Đang tính route cho', points.length, 'điểm:', points);
+
+  try {
+    const res  = await fetch('/api/route_preview', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ points }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      routePreviewSegments = data.segments.map(seg => seg.map(p => ({ x: p[0], y: p[1] })));
+      console.log('[RoutePreview] ✓ Nhận được', routePreviewSegments.length, 'chặng.');
+    } else {
+      console.warn('[RoutePreview] ✗ Lỗi tính route:', data.error);
+      routePreviewSegments = [];
+    }
+  } catch (err) {
+    console.warn('[RoutePreview] ✗ Không thể kết nối server:', err.message);
+    routePreviewSegments = [];
+  }
+
   drawOverlay();
 }
 
@@ -1322,6 +1444,17 @@ async function selectSpawnPoint(sp) {
     if (data.ok) {
       setSpawnFeedback(`✓ Đã gửi lệnh spawn tại (${sp.x.toFixed(2)}, ${sp.y.toFixed(2)})`, 'ok', 6000);
       addLog('info', `Spawn Car → x=${sp.x.toFixed(3)}, y=${sp.y.toFixed(3)}, z=${sp.z.toFixed(3)}, yaw=${sp.yaw.toFixed(3)}`);
+
+      // Tạm dùng ngay toạ độ spawn làm "vị trí xe hiện tại" cho preview tuyến
+      // đường — không cần đợi WebSocket /ws/odom_stream gửi frame đầu tiên
+      // (có thể mất vài giây), tránh preview bị bỏ qua âm thầm nếu người dùng
+      // thêm điểm vào hàng đợi ngay sau khi vừa spawn. Sẽ bị ghi đè bằng dữ
+      // liệu thật ngay khi odomWs.onmessage nhận được frame đầu tiên.
+      if (!latestOdom) {
+        latestOdom = { x: sp.x, y: sp.y, yaw: sp.yaw };
+        console.log('[RoutePreview] Dùng tạm toạ độ spawn làm vị trí xe:', latestOdom);
+      }
+
       startNavigationStack();
       startDataLogger();
     } else {
@@ -1532,7 +1665,17 @@ async function autoLoadMapFromStorage() {
   }
 }
 
+// Hiển thị chế độ cảm biến đã chọn ở Bước 2 (Default / Auto Emergency Brake),
+// đọc từ localStorage — thay cho ô "Ego Vehicle" cũ cạnh nút Spawn Car.
+function displaySensorModeFromStorage() {
+  const mode = localStorage.getItem('sensorMode');
+  const text = document.getElementById('sensorModeText');
+  if (!text) return;
+  text.textContent = mode === 'aeb' ? 'Auto Emergency Brake' : 'Default';
+}
+
 autoLoadMapFromStorage();
+displaySensorModeFromStorage();
 startRosStatusStream();     // lắng nghe trạng thái ROS bridge qua SSE
 startOdomStream();          // kết nối WebSocket nhận odom realtime
 startSpawnPointsStream();   // lắng nghe danh sách spawn point từ CARLA qua SSE

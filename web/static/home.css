@@ -484,21 +484,6 @@ body {
 }
 .toggle-btn:disabled { opacity: .5; cursor: not-allowed; }
 
-/* Placeholder — dành chỗ cho tính năng "Thêm bản đồ mới" sẽ phát triển sau */
-.btn-add-map-placeholder {
-  margin-top: 12px;
-  width: 100%;
-  padding: 8px 10px;
-  font-size: 12px;
-  font-weight: 700;
-  border-radius: 8px;
-  border: 1px dashed var(--border);
-  background: transparent;
-  color: var(--text-dim);
-  cursor: not-allowed;
-  opacity: .7;
-}
-
 .render-note {
   margin-top: 10px;
   font-size: 12px;
@@ -520,6 +505,15 @@ body {
   gap: 4px;
 }
 .carla-log:empty { display: none; margin-top: 0; padding: 0; border: none; }
+
+/* Riêng log Bước 2 (ROS Bridge): luôn hiển thị kể cả khi rỗng, giãn hết cỡ
+   xuống sát nút "Khởi động" — khác với log Bước 1 (#carlaLog) vẫn ẩn khi rỗng. */
+#rosBridgeLog {
+  display: flex !important;
+  flex: 1;
+  max-height: none;
+  min-height: 60px;
+}
 
 .carla-log-line {
   font-family: 'Consolas', 'Courier New', monospace;

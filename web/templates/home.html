@@ -191,12 +191,6 @@
       </div>
       <p class="render-note">Không Render sẽ khiến hệ thống 3D chạy ngầm và giảm tải.</p>
 
-      <!-- Placeholder — chỗ dành cho tính năng "Thêm bản đồ mới" sẽ phát triển sau,
-           thay thế cho Map Manager / Upload Map cũ (đã ẩn ở trang điều khiển). -->
-      <button type="button" class="btn-add-map-placeholder" id="btnAddMapPlaceholder" disabled title="Tính năng sẽ được phát triển sau">
-        + Thêm bản đồ mới (sắp ra mắt)
-      </button>
-
       <div class="carla-log" id="carlaLog"></div>
 
       <div class="modal-footer-actions">
@@ -232,7 +226,16 @@
             <button type="button" class="toggle-btn" data-value="async" disabled title="Chưa hỗ trợ">Không đồng bộ</button>
           </div>
         </div>
+        <div class="info-row">
+          <span class="info-label">Cảm biến:</span>
+          <select class="map-select" id="sensorSelect">
+            <option value="default">Default</option>
+            <option value="aeb" title="Chỉ khả dụng với Town01">Auto Emergency Brake</option>
+          </select>
+        </div>
       </div>
+      <p class="render-note" id="sensorDescription">Các cảm biến cơ bản: IMU, GNSS, Speedometer, Odometry, RGB View, Radar</p>
+      <p class="render-note" id="sensorNote" style="display:none">Auto Emergency Brake chỉ khả dụng khi chọn bản đồ Town01.</p>
 
       <div class="carla-log" id="rosBridgeLog"></div>
 

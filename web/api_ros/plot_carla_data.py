@@ -30,9 +30,6 @@ Phụ thuộc: numpy, matplotlib   (không cần pandas)
   - Phím ← / → : lùi / tiến đúng 1 frame (1 dòng dữ liệu).
   - Trên đồ thị "v tổng hợp": các chấm CAM đánh dấu từng đoạn xe đứng yên
     (is_idle) — click vào 1 chấm để hiện đã dừng bao nhiêu giây tại đó.
-  - Nếu có file "<tên_csv>_waypoints.json" đi kèm (do navigate_node.py ghi mỗi
-    lần "Chốt hành trình", được data_logger.py copy theo cặp khi Export), các
-    điểm đích đã YÊU CẦU (A, B, C...) sẽ được đánh dấu bằng sao cam trên quỹ đạo.
 
 ── Gợi ý mở rộng sau này (chưa làm) ──────────────────────────────────────────
   - Nút Play/Pause tự động chạy qua từng frame theo đúng nhịp thời gian thực.
@@ -42,11 +39,11 @@ Phụ thuộc: numpy, matplotlib   (không cần pandas)
 import sys
 import os
 import re
-import json
 
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+from matplotlib.widgets import Button
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -95,21 +92,6 @@ def load_csv(path):
         # ép về mảng 1 phần tử để mọi chỗ dùng len()/indexing phía dưới còn đúng.
         data = np.array([data])
     return data
-
-
-def load_waypoints_for(csv_path):
-    """Tìm file '<csv không đuôi>_waypoints.json' đi kèm (do data_logger.py copy
-    theo cặp khi Export). Trả về [] nếu không có — không coi là lỗi."""
-    base = csv_path[:-4] if csv_path.endswith('.csv') else csv_path
-    wp_path = base + '_waypoints.json'
-    if os.path.isfile(wp_path):
-        try:
-            with open(wp_path) as f:
-                d = json.load(f)
-            return d.get('points', [])
-        except Exception as e:
-            print(f'[Cảnh báo] Không đọc được file waypoints kèm theo: {e}')
-    return []
 
 
 def detect_idle_clusters(rel_t, is_idle):
@@ -186,7 +168,6 @@ class Plotter:
             self.is_idle = np.zeros(self.n, dtype=int)
 
         self.idle_clusters = detect_idle_clusters(self.rel_t, self.is_idle)
-        self.waypoints     = load_waypoints_for(csv_path)
 
         self.cur_idx = 0
 
@@ -206,7 +187,7 @@ class Plotter:
             4, 2, figure=self.fig,
             width_ratios=[1.15, 1.4],
             hspace=0.5, wspace=0.28,
-            left=0.07, right=0.97, top=0.90, bottom=0.07,
+            left=0.07, right=0.97, top=0.90, bottom=0.11,
         )
 
         self.ax_traj     = self.fig.add_subplot(gs[0:2, 0])   # quỹ đạo — cao gấp đôi ga/phanh
@@ -225,17 +206,23 @@ class Plotter:
         self.ax_traj.plot(self.x, self.y, '-', color='#3b7dd8', lw=1.3, zorder=2)
         self.ax_traj.plot(self.x[0], self.y[0], 'o', color='#2ecc71', ms=9,
                            mec='black', mew=0.5, label='Bắt đầu', zorder=4)
-        self.ax_traj.plot(self.x[-1], self.y[-1], 's', color='#e74c3c', ms=9,
+        self.ax_traj.plot(self.x[-1], self.y[-1], 'o', color='#e74c3c', ms=9,
                            mec='black', mew=0.5, label='Kết thúc', zorder=4)
 
-        if self.waypoints:
-            wx = [p[0] for p in self.waypoints]
-            wy = [p[1] for p in self.waypoints]
-            self.ax_traj.plot(wx, wy, '*', color='#f39c12', ms=16, mec='black', mew=0.6,
-                               linestyle='None', label='Điểm yêu cầu', zorder=5)
-            for i, (px, py) in enumerate(self.waypoints):
-                self.ax_traj.annotate(chr(65 + i), (px, py), textcoords='offset points',
-                                       xytext=(7, 7), fontsize=10, fontweight='bold', color='#a0650a')
+        # Đánh dấu vị trí xe đứng yên — chấm vuông đỏ (khác hình với chấm tròn
+        # xanh/đỏ của Bắt đầu/Kết thúc để không bị lẫn). Click vào cũng xem được
+        # thời lượng dừng, giống chấm cam bên đồ thị v tổng hợp.
+        self.traj_idle_artists = []
+        for c in self.idle_clusters:
+            i = c['start']
+            dot, = self.ax_traj.plot(
+                self.x[i], self.y[i], 's', color='#e74c3c', ms=8,
+                mec='black', mew=0.5, picker=8, zorder=5,
+            )
+            self.traj_idle_artists.append((dot, c))
+        if self.idle_clusters:
+            # Nhãn riêng cho chú thích (legend) — không gắn vào từng chấm để tránh lặp lại nhiều lần
+            self.ax_traj.plot([], [], 's', color='#e74c3c', ms=8, mec='black', mew=0.5, label='Điểm dừng')
 
         self.ax_traj.set_aspect('equal', adjustable='datalim')
         self.ax_traj.set_xlabel('x (m)')
@@ -306,12 +293,28 @@ class Plotter:
         self.readout = self.fig.text(0.5, 0.965, '', ha='center', va='top',
                                       fontsize=9.5, family='monospace')
 
-        # Annotation hiện thời lượng dừng khi click vào chấm cam (ẩn mặc định)
+        # Annotation hiện thời lượng dừng khi click vào chấm cam / vuông đỏ (ẩn mặc định)
+        # — 2 cái riêng vì chấm đứng yên xuất hiện ở cả đồ thị v_total lẫn quỹ đạo.
         self.idle_annotation = self.ax_vtotal.annotate(
             '', xy=(0, 0), xytext=(12, 16), textcoords='offset points',
             bbox=dict(boxstyle='round,pad=0.35', fc='#fff3cd', ec='#f39c12'),
             fontsize=8.5, visible=False, zorder=10,
         )
+        self.traj_idle_annotation = self.ax_traj.annotate(
+            '', xy=(0, 0), xytext=(12, 16), textcoords='offset points',
+            bbox=dict(boxstyle='round,pad=0.35', fc='#fff3cd', ec='#e74c3c'),
+            fontsize=8.5, visible=False, zorder=10,
+        )
+
+        # ── Nút "Xuất lệnh điều khiển xe mô phỏng" — PLACEHOLDER, hiện tại chưa
+        # làm gì (chỉ hiển thị, giống các nút "sẽ phát triển sau" khác trong dự
+        # án). Cố ý để màu xám mờ để người dùng hiểu đây là tính năng chưa xong.
+        self.ax_export_btn = self.fig.add_axes([0.40, 0.015, 0.24, 0.04])
+        self.export_btn = Button(self.ax_export_btn, 'Xuất lệnh điều khiển xe mô phỏng',
+                                  color='#2a3042', hovercolor='#2a3042')
+        self.export_btn.label.set_fontsize(8.5)
+        self.export_btn.label.set_color('#6b7490')
+        self.export_btn.on_clicked(lambda event: None)  # placeholder — chưa gắn chức năng
 
         self.fig.suptitle('') if False else None  # (giữ chỗ, không dùng suptitle để tránh đè lên readout)
 
@@ -329,11 +332,18 @@ class Plotter:
             for dot, cluster in self.idle_dot_artists:
                 contains, _ = dot.contains(event)
                 if contains:
-                    self._show_idle_duration(cluster)
                     self.set_index(cluster['start'])
+                    self._show_idle_duration(cluster)
                     return
 
         if event.inaxes is self.ax_traj:
+            for dot, cluster in self.traj_idle_artists:
+                contains, _ = dot.contains(event)
+                if contains:
+                    self.set_index(cluster['start'])
+                    self._show_idle_duration(cluster, on='traj')
+                    return
+
             dx = self.x - event.xdata
             dy = self.y - event.ydata
             idx = int(np.argmin(dx * dx + dy * dy))
@@ -355,13 +365,20 @@ class Plotter:
     def set_index(self, idx):
         self.cur_idx = idx
         self.idle_annotation.set_visible(False)
+        self.traj_idle_annotation.set_visible(False)
         self._update_all()
 
-    def _show_idle_duration(self, cluster):
+    def _show_idle_duration(self, cluster, on='vtotal'):
         i = cluster['start']
-        self.idle_annotation.xy = (self.rel_t[i], self.v_total[i])
-        self.idle_annotation.set_text(f"Dừng {format_duration(cluster['duration'])}")
-        self.idle_annotation.set_visible(True)
+        text = f"Dừng {format_duration(cluster['duration'])}"
+        if on == 'traj':
+            self.traj_idle_annotation.xy = (self.x[i], self.y[i])
+            self.traj_idle_annotation.set_text(text)
+            self.traj_idle_annotation.set_visible(True)
+        else:
+            self.idle_annotation.xy = (self.rel_t[i], self.v_total[i])
+            self.idle_annotation.set_text(text)
+            self.idle_annotation.set_visible(True)
 
     def _update_all(self):
         i = self.cur_idx

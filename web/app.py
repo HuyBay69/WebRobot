@@ -24,6 +24,7 @@ from api_ros.carla_node     import carla_bp, stop_carla
 from api_ros.ros_bridge_node import ros_bridge_bp, stop_ros_bridge
 from api_ros.navigation_stack_node import navstack_bp, stop_navigation_stack
 from api_ros.data_logger import data_logger_bp, stop_data_logger
+from api_ros.route_preview import route_preview_bp
 
 app  = Flask(__name__)
 sock = Sock(app)
@@ -33,6 +34,7 @@ app.register_blueprint(carla_bp)
 app.register_blueprint(ros_bridge_bp)
 app.register_blueprint(navstack_bp)
 app.register_blueprint(data_logger_bp)
+app.register_blueprint(route_preview_bp)
 
 # ── Ẩn log poll /api/ros/status (spam mỗi 6s) ────────────────────────────────
 class _SuppressRosStatusLog(logging.Filter):

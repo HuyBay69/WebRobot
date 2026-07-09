@@ -135,6 +135,9 @@ document.getElementById('btnStep2').addEventListener('click', () => openModal('m
   const logBox      = document.getElementById('rosBridgeLog');
   const mapSelect   = document.getElementById('rosBridgeMapSelect');
   const modeBtns    = document.querySelectorAll('#syncToggle .toggle-btn');
+  const sensorSelect      = document.getElementById('sensorSelect');
+  const sensorDescription = document.getElementById('sensorDescription');
+  const sensorNote        = document.getElementById('sensorNote');
 
   function log(text) {
     const line = document.createElement('div');
@@ -153,6 +156,38 @@ document.getElementById('btnStep2').addEventListener('click', () => openModal('m
     });
   });
 
+  // Mô tả cảm biến theo từng lựa chọn — cập nhật ngay khi đổi dropdown, chưa
+  // gắn lệnh chạy thật khác nhau (sẽ bổ sung sau), hiện chỉ để thông tin.
+  const SENSOR_DESCRIPTIONS = {
+    default: 'Các cảm biến cơ bản: IMU, GNSS, Speedometer, Odometry, RGB View, Radar',
+    aeb:     'Tích hợp thêm Depth và Segmentation sensor',
+  };
+
+  function updateSensorDescription() {
+    sensorDescription.textContent = SENSOR_DESCRIPTIONS[sensorSelect.value] || '';
+  }
+
+  sensorSelect.addEventListener('change', updateSensorDescription);
+  updateSensorDescription(); // hiện đúng mô tả ngay lúc mở modal
+
+  // "Auto Emergency Brake" chỉ khả dụng với Town01 — các bản đồ khác chưa
+  // được kiểm chứng nên tạm khoá lại (vô hiệu hoá <option>), luôn tự về
+  // "Default" nếu đổi bản đồ khác trong lúc đang chọn AEB.
+  const aebOption = sensorSelect.querySelector('option[value="aeb"]');
+
+  function updateSensorAvailability() {
+    const isTown01 = mapSelect.value === 'Town01_Opt';
+    if (!isTown01 && sensorSelect.value === 'aeb') {
+      sensorSelect.value = 'default';
+      updateSensorDescription();
+    }
+    aebOption.disabled = !isTown01;
+    sensorNote.style.display = isTown01 ? 'none' : 'block';
+  }
+
+  mapSelect.addEventListener('change', updateSensorAvailability);
+  updateSensorAvailability(); // chạy ngay lúc mở modal, khớp với bản đồ đang chọn sẵn
+
   function startFlow() {
     if (busy) return;
     busy = true;
@@ -164,9 +199,18 @@ document.getElementById('btnStep2').addEventListener('click', () => openModal('m
     const mapId = selectedOption ? selectedOption.dataset.mapId : null;
     const mapLabel = selectedOption ? selectedOption.textContent : town;
 
+    const sensorMode  = sensorSelect.value;
+    const sensorLabel = sensorSelect.options[sensorSelect.selectedIndex].textContent;
+    // Ghi nhớ lựa chọn cảm biến ngay lúc bấm Khởi động — trang điều khiển
+    // (bước 3) sẽ đọc lại giá trị này để hiển thị bên cạnh nút Spawn Car.
+    // Lưu ý: 2 lựa chọn hiện CHẠY CHUNG 1 lệnh khởi động (chưa phân biệt) —
+    // sẽ bổ sung lệnh riêng cho từng chế độ sau.
+    localStorage.setItem('sensorMode', sensorMode);
+
     btnConfirm.disabled = true;
     mapSelect.disabled  = true;
     log('Đang khởi động Carla ROS Bridge . . .');
+    log(`Chế độ cảm biến: ${sensorLabel}`);
 
     fetch('/api/rosbridge/start', {
       method: 'POST',

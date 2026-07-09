@@ -51,13 +51,11 @@ Flask spawn node này lúc start, ghi lệnh vào stdin mỗi khi browser bấm 
 Node chạy độc lập, không biết gì về web.
 """
 
-import json
 import math
 import os
 import sys
 import threading
 import time
-from datetime import datetime
 
 import rclpy
 from rclpy.node import Node
@@ -67,12 +65,6 @@ from nav_msgs.msg import Odometry, Path
 from std_msgs.msg import Float64
 
 ROLE_NAME = 'hero'   # có thể đổi thành arg nếu cần
-
-# web/api_ros/navigate_node.py → lên 1 cấp là web/ → cùng thư mục data_record/
-# mà data_logger.py dùng làm file tạm — để export_recorded_data() copy kèm
-# theo cặp với mỗi lần xuất CSV (xem data_logger.py: export_recorded_data()).
-_BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MISSION_WAYPOINTS_PATH = os.path.join(_BASE_DIR, 'data_record', 'mission_waypoints.json')
 
 # ── Ngưỡng nhận diện "đã tới điểm" ────────────────────────────────────────────
 ARRIVAL_DIST_M    = 4.0   # khoảng cách Euclidean (m) tới điểm CUỐI của route hiện tại
@@ -336,13 +328,12 @@ class NavigateNode(Node):
 
     def _on_arrival_timeout(self):
         """Hết 3s giữ tại điểm vừa tới — chuyển sang điểm kế tiếp (nếu còn)."""
-        completed_point = None
         with self._lock:
             self._cancel_arrival_timer_locked()
             self._waiting_at_point = False
 
             if self._active_points:
-                completed_point = self._active_points.pop(0)  # điểm vừa hoàn thành (đã tới + giữ đủ 3s)
+                self._active_points.pop(0)  # bỏ điểm vừa hoàn thành
 
             if self._active_points:
                 next_point = self._active_points[0]
@@ -351,9 +342,6 @@ class NavigateNode(Node):
                 next_point = None
                 self._current_target = None
                 self._route_end = None
-
-        if completed_point is not None:
-            self._append_completed_waypoint(completed_point)
 
         if next_point is not None:
             self._publish_goal(*next_point)
@@ -402,42 +390,6 @@ class NavigateNode(Node):
         msg         = Float64()
         msg.data    = speed_mps
         self.speed_pub.publish(msg)
-
-    @staticmethod
-    def _append_completed_waypoint(point):
-        """Đọc danh sách điểm ĐÃ HOÀN THÀNH từ data_record/mission_waypoints.json
-        (nếu có), thêm điểm vừa xong vào cuối, ghi lại. Chỉ gọi hàm này khi xe
-        THỰC SỰ đã tới điểm và giữ đủ 3s (từ _on_arrival_timeout) — không bao
-        giờ ghi điểm mới chỉ "yêu cầu"/đang hướng tới nhưng chưa tới, để khi đổi
-        lộ trình giữa chừng không bị lẫn các điểm cũ chưa từng đi qua.
-
-        Cố ý dùng FILE làm nguồn dữ liệu chính (không giữ list trong RAM): nhờ
-        vậy khi data_logger.py xoá file này lúc bắt đầu phiên ghi mới (spawn xe
-        mới), danh sách tự "bắt đầu lại từ đầu" mà không cần thêm lệnh đồng bộ
-        nào giữa navigate_node.py và Flask.
-
-        data_logger.py sẽ copy file này theo cặp với mỗi lần "Xuất dữ liệu"
-        (xem export_recorded_data() bên đó)."""
-        points = []
-        try:
-            if os.path.isfile(MISSION_WAYPOINTS_PATH):
-                with open(MISSION_WAYPOINTS_PATH) as f:
-                    existing = json.load(f)
-                points = [tuple(p) for p in existing.get('points', [])]
-        except Exception:
-            points = []
-
-        points.append(point)
-
-        try:
-            os.makedirs(os.path.dirname(MISSION_WAYPOINTS_PATH), exist_ok=True)
-            with open(MISSION_WAYPOINTS_PATH, 'w') as f:
-                json.dump({
-                    'saved_at': datetime.now().isoformat(),
-                    'points': [[x, y] for x, y in points],
-                }, f)
-        except Exception:
-            pass  # không để lỗi ghi file phụ này làm gián đoạn luồng điều hướng chính
 
 
 # ── Stdin reader ─────────────────────────────────────────────────────────────────
