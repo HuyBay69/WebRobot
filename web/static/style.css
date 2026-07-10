@@ -26,7 +26,7 @@
 
 html, body {
   height: 100%;
-  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: 'Be Vietnam Pro', 'Segoe UI', system-ui, -apple-system, sans-serif;
   font-size: 14px;
   background: var(--bg);
   color: var(--text);
@@ -753,15 +753,18 @@ html, body {
 }
 
 .btn-queue-clear {
-  background: none;
+  flex: 1;
+  background: var(--danger);
+  color: #fff;
   border: none;
-  color: var(--text-dim);
-  font-size: 11px;
+  border-radius: 8px;
+  padding: 10px;
+  font-weight: 800;
+  font-size: 13px;
   cursor: pointer;
-  text-decoration: underline;
-  padding: 0;
+  transition: background .15s ease, opacity .15s ease;
 }
-.btn-queue-clear:hover { color: var(--danger); }
+.btn-queue-clear:hover { background: #c94444; }
 
 .mission-queue-empty {
   font-size: 11.5px;
@@ -833,7 +836,13 @@ html, body {
 }
 .mission-queue-remove:hover { color: var(--danger); }
 
+.mission-queue-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .btn-commit-mission {
+  flex: 1;
   background: var(--accent);
   color: #0d1117;
   border: none;
@@ -1098,9 +1107,16 @@ html, body {
 /* ── Navigation card (gộp Goal + Speed) ─────────────────────────────────── */
 .card-navigation .nav-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr 100px;
-  gap: 4px 10px;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px 8px;
   align-items: center;
+}
+
+/* Ép mọi ô con co đúng theo cột 1fr — nếu không, <input type="number"> có kích
+   thước nội tại (intrinsic width) rộng hơn 1fr sẽ tự đẩy rộng cột X/Y ra, làm
+   các cột lệch nhau. min-width:0 cho phép grid item co nhỏ hơn nội dung. */
+.card-navigation .nav-grid > * {
+  min-width: 0;
 }
 
 /* Hàng label */
@@ -1161,6 +1177,7 @@ html, body {
 /* ── Speed slider (thanh kéo chọn tốc độ) — thay ô input number ─────────── */
 .speed-slider-wrap {
   height: 36px;               /* khớp chiều cao field-input / actual-speed-display */
+  min-width: 0;               /* co đúng trong cột grid, không tràn sang ô Actual bên cạnh */
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1168,6 +1185,7 @@ html, body {
 
 .speed-slider {
   flex: 1;
+  min-width: 0;               /* cho phép thanh trượt co lại thay vì đẩy rộng cả wrap */
   -webkit-appearance: none;
   appearance: none;
   height: 4px;
@@ -1239,10 +1257,10 @@ html, body {
   gap: 12px;
 }
 
-/* Placeholder — chỗ dành cho tính năng chọn loại xe sẽ phát triển sau,
-   hiện tạm khoá, chỉ hiển thị "Ego Vehicle". */
+/* Ô hiển thị chế độ cảm biến (đã chọn ở Bước 2) — thu nhỏ lại, nhường chỗ
+   cho nút Spawn Car rộng hơn. */
 .ego-vehicle-field {
-  flex: 1;
+  flex: 1 1 0;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -1255,7 +1273,7 @@ html, body {
   color: var(--text-dim);
   font-size: 13px;
   font-weight: 600;
-  cursor: not-allowed;
+  cursor: default;
   opacity: .8;
 }
 .ego-vehicle-field svg { flex-shrink: 0; }
@@ -1265,9 +1283,8 @@ html, body {
 }
 
 .btn-spawn-car {
-  width: auto;
-  min-width: 108px;
-  flex-shrink: 0;
+  flex: 1 1 0;        /* rộng bằng ô sensor bên trái (mỗi bên 1 nửa) */
+  min-width: 0;
   white-space: nowrap;
   padding: 0 18px;
   height: 36px;

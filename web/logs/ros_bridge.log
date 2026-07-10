@@ -1,8 +1,8 @@
-[INFO] [launch]: All log files can be found below /home/huy/.ros/log/2026-07-09-20-44-54-270260-laptop-18110
+[INFO] [launch]: All log files can be found below /home/huy/.ros/log/2026-07-10-12-32-36-369909-laptop-8923
 [INFO] [launch]: Default logging verbosity is set to INFO
-[INFO] [bridge-1]: process started with pid [18111]
+[INFO] [bridge-1]: process started with pid [8924]
 [bridge-1] [0mTrying to connect to localhost:2000[0m
-[bridge-1] [0mLoading town '/Game/Package1/Maps/BK8/BK8' (previous: 'Carla/Maps/Town01_Opt').[0m
+[bridge-1] [0mLoading town 'Town01_Opt' (previous: 'Carla/Maps/Town01_Opt').[0m
 [bridge-1] [0msynchronous_mode: True[0m
 [bridge-1] [0mfixed_delta_seconds: 0.05[0m
 [bridge-1] [0mParameters:[0m
@@ -14,31 +14,177 @@
 [bridge-1] [0m  synchronous_mode_wait_for_vehicle_control_command: False[0m
 [bridge-1] [0m  fixed_delta_seconds: 0.05[0m
 [bridge-1] [0m  register_all_sensors: True[0m
-[bridge-1] [0m  town: /Game/Package1/Maps/BK8/BK8[0m
+[bridge-1] [0m  town: Town01_Opt[0m
 [bridge-1] [0m  ego_vehicle: {'role_name': 'hero'}[0m
 [bridge-1] [0mCreated Spectator(id=169)[0m
-[bridge-1] [0mCreated TrafficLightsSensor(id=10000)[0m
-[bridge-1] [0mCreated ObjectSensor(id=10001)[0m
-[bridge-1] [0mCreated ActorListSensor(id=10002)[0m
-[bridge-1] [0mCreated EgoVehicle(id=170)[0m
-[bridge-1] [0mCreated MarkerSensor(id=10003)[0m
-[bridge-1] [0mCreated OpenDriveSensor(id=10004)[0m
-[bridge-1] [0mCreated RgbCamera(id=171)[0m
-[bridge-1] [0mCreated RgbCamera(id=172)[0m
-[bridge-1] [0mCreated ActorControl(id=10005)[0m
-[bridge-1] [0mCreated Radar(id=173)[0m
-[bridge-1] [0mCreated Gnss(id=174)[0m
-[bridge-1] [0mCreated ImuSensor(id=175)[0m
-[bridge-1] [0mCreated CollisionSensor(id=176)[0m
-[bridge-1] [0mCreated LaneInvasionSensor(id=177)[0m
-[bridge-1] [0mCreated TFSensor(id=10006)[0m
-[bridge-1] [0mCreated ObjectSensor(id=10007)[0m
-[bridge-1] [0mCreated OdometrySensor(id=10008)[0m
-[bridge-1] [0mCreated SpeedometerSensor(id=10009)[0m
-[bridge-1] [0mCreated ActorControl(id=10010)[0m
-[bridge-1] [0mRemoved RgbCamera(id=171)[0m
+[bridge-1] [0mCreated TrafficLight(id=170)[0m
+[bridge-1] [0mCreated TrafficLight(id=171)[0m
+[bridge-1] [0mCreated TrafficLight(id=172)[0m
+[bridge-1] [0mCreated TrafficLight(id=173)[0m
+[bridge-1] [0mCreated TrafficLight(id=174)[0m
+[bridge-1] [0mCreated TrafficLight(id=175)[0m
+[bridge-1] [0mCreated TrafficLight(id=176)[0m
+[bridge-1] [0mCreated TrafficLight(id=177)[0m
+[bridge-1] [0mCreated TrafficLight(id=178)[0m
+[bridge-1] [0mCreated TrafficLight(id=179)[0m
+[bridge-1] [0mCreated TrafficLight(id=180)[0m
+[bridge-1] [0mCreated TrafficLight(id=181)[0m
+[bridge-1] [0mCreated TrafficLight(id=182)[0m
+[bridge-1] [0mCreated TrafficLight(id=183)[0m
+[bridge-1] [0mCreated TrafficLight(id=184)[0m
+[bridge-1] [0mCreated TrafficLight(id=185)[0m
+[bridge-1] [0mCreated TrafficLight(id=186)[0m
+[bridge-1] [0mCreated TrafficLight(id=187)[0m
+[bridge-1] [0mCreated TrafficLight(id=188)[0m
+[bridge-1] [0mCreated TrafficLight(id=189)[0m
+[bridge-1] [0mCreated TrafficLight(id=190)[0m
+[bridge-1] [0mCreated TrafficLight(id=191)[0m
+[bridge-1] [0mCreated TrafficLight(id=192)[0m
+[bridge-1] [0mCreated TrafficLight(id=193)[0m
+[bridge-1] [0mCreated TrafficLight(id=194)[0m
+[bridge-1] [0mCreated TrafficLight(id=195)[0m
+[bridge-1] [0mCreated TrafficLight(id=196)[0m
+[bridge-1] [0mCreated TrafficLight(id=197)[0m
+[bridge-1] [0mCreated TrafficLight(id=198)[0m
+[bridge-1] [0mCreated TrafficLight(id=199)[0m
+[bridge-1] [0mCreated TrafficLight(id=200)[0m
+[bridge-1] [0mCreated TrafficLight(id=201)[0m
+[bridge-1] [0mCreated TrafficLight(id=202)[0m
+[bridge-1] [0mCreated TrafficLight(id=203)[0m
+[bridge-1] [0mCreated TrafficLight(id=204)[0m
+[bridge-1] [0mCreated TrafficLight(id=205)[0m
+[bridge-1] [0mCreated Traffic(id=206)[0m
+[bridge-1] [0mCreated Traffic(id=207)[0m
+[bridge-1] [0mCreated Traffic(id=208)[0m
+[bridge-1] [0mCreated Traffic(id=209)[0m
+[bridge-1] [0mCreated Traffic(id=210)[0m
+[bridge-1] [0mCreated Traffic(id=211)[0m
+[bridge-1] [0mCreated Traffic(id=212)[0m
+[bridge-1] [0mCreated Traffic(id=213)[0m
+[bridge-1] [0mCreated Traffic(id=214)[0m
+[bridge-1] [0mCreated Traffic(id=215)[0m
+[bridge-1] [0mCreated Traffic(id=216)[0m
+[bridge-1] [0mCreated Traffic(id=217)[0m
+[bridge-1] [0mCreated Traffic(id=218)[0m
+[bridge-1] [0mCreated Traffic(id=219)[0m
+[bridge-1] [0mCreated Traffic(id=220)[0m
+[bridge-1] [0mCreated Traffic(id=221)[0m
+[bridge-1] [0mCreated Traffic(id=222)[0m
+[bridge-1] [0mCreated Traffic(id=223)[0m
+[bridge-1] [0mCreated Traffic(id=224)[0m
+[bridge-1] [0mCreated Traffic(id=225)[0m
+[bridge-1] [0mCreated Traffic(id=226)[0m
+[bridge-1] [0mCreated Actor(id=227)[0m
+[bridge-1] [0mCreated Actor(id=228)[0m
+[bridge-1] [0mCreated Actor(id=229)[0m
+[bridge-1] [0mCreated Actor(id=230)[0m
+[bridge-1] [0mCreated Actor(id=231)[0m
+[bridge-1] [0mCreated Actor(id=232)[0m
+[bridge-1] [0mCreated Actor(id=233)[0m
+[bridge-1] [0mCreated Actor(id=234)[0m
+[bridge-1] [0mCreated Actor(id=235)[0m
+[bridge-1] [0mCreated Actor(id=236)[0m
+[bridge-1] [0mCreated Actor(id=237)[0m
+[bridge-1] [0mCreated Actor(id=238)[0m
+[bridge-1] [0mCreated Actor(id=239)[0m
+[bridge-1] [0mCreated Actor(id=240)[0m
+[bridge-1] [0mCreated Actor(id=241)[0m
+[bridge-1] [0mCreated Actor(id=242)[0m
+[bridge-1] [0mCreated Actor(id=243)[0m
+[bridge-1] [0mCreated Actor(id=244)[0m
+[bridge-1] [0mCreated Actor(id=245)[0m
+[bridge-1] [0mCreated Actor(id=246)[0m
+[bridge-1] [0mCreated Actor(id=247)[0m
+[bridge-1] [0mCreated Actor(id=248)[0m
+[bridge-1] [0mCreated Actor(id=249)[0m
+[bridge-1] [0mCreated Actor(id=250)[0m
+[bridge-1] [0mCreated Actor(id=251)[0m
+[bridge-1] [0mCreated Actor(id=252)[0m
+[bridge-1] [0mCreated Actor(id=253)[0m
+[bridge-1] [0mCreated Actor(id=254)[0m
+[bridge-1] [0mCreated Actor(id=255)[0m
+[bridge-1] [0mCreated Actor(id=256)[0m
+[bridge-1] [0mCreated Actor(id=257)[0m
+[bridge-1] [0mCreated Actor(id=258)[0m
+[bridge-1] [0mCreated Actor(id=259)[0m
+[bridge-1] [0mCreated Actor(id=260)[0m
+[bridge-1] [0mCreated Actor(id=261)[0m
+[bridge-1] [0mCreated Actor(id=262)[0m
+[bridge-1] [0mCreated Actor(id=263)[0m
+[bridge-1] [0mCreated Actor(id=264)[0m
+[bridge-1] [0mCreated Actor(id=265)[0m
+[bridge-1] [0mCreated Actor(id=266)[0m
+[bridge-1] [0mCreated Actor(id=267)[0m
+[bridge-1] [0mCreated Actor(id=268)[0m
+[bridge-1] [0mCreated Actor(id=269)[0m
+[bridge-1] [0mCreated Actor(id=270)[0m
+[bridge-1] [0mCreated Actor(id=271)[0m
+[bridge-1] [0mCreated Actor(id=272)[0m
+[bridge-1] [0mCreated Actor(id=273)[0m
+[bridge-1] [0mCreated Actor(id=274)[0m
+[bridge-1] [0mCreated Actor(id=275)[0m
+[bridge-1] [0mCreated Actor(id=276)[0m
+[bridge-1] [0mCreated Actor(id=277)[0m
+[bridge-1] [0mCreated Actor(id=278)[0m
+[bridge-1] [0mCreated Actor(id=279)[0m
+[bridge-1] [0mCreated Actor(id=280)[0m
+[bridge-1] [0mCreated Actor(id=281)[0m
+[bridge-1] [0mCreated Actor(id=282)[0m
+[bridge-1] [0mCreated Actor(id=283)[0m
+[bridge-1] [0mCreated Actor(id=284)[0m
+[bridge-1] [0mCreated Actor(id=285)[0m
+[bridge-1] [0mCreated Actor(id=286)[0m
+[bridge-1] [0mCreated Actor(id=287)[0m
+[bridge-1] [0mCreated Actor(id=288)[0m
+[bridge-1] [0mCreated Actor(id=289)[0m
+[bridge-1] [0mCreated Actor(id=290)[0m
+[bridge-1] [0mCreated Actor(id=291)[0m
+[bridge-1] [0mCreated Actor(id=292)[0m
+[bridge-1] [0mCreated Actor(id=293)[0m
+[bridge-1] [0mCreated Actor(id=294)[0m
+[bridge-1] [0mCreated Actor(id=295)[0m
+[bridge-1] [0mCreated Actor(id=296)[0m
+[bridge-1] [0mCreated Actor(id=297)[0m
+[bridge-1] [0mCreated Actor(id=298)[0m
+[bridge-1] [0mCreated Actor(id=299)[0m
+[bridge-1] [0mCreated Actor(id=300)[0m
+[bridge-1] [0mCreated Actor(id=301)[0m
+[bridge-1] [0mCreated Actor(id=302)[0m
+[bridge-1] [0mCreated Actor(id=303)[0m
+[bridge-1] [0mCreated Actor(id=304)[0m
+[bridge-1] [0mCreated Actor(id=305)[0m
+[bridge-1] [0mCreated Actor(id=306)[0m
+[bridge-1] [0mCreated Actor(id=307)[0m
+[bridge-1] [0mCreated Actor(id=308)[0m
+[bridge-1] [0mCreated Actor(id=309)[0m
+[bridge-1] [0mCreated Actor(id=310)[0m
+[bridge-1] [0mCreated Actor(id=311)[0m
+[bridge-1] [0mCreated Actor(id=312)[0m
+[bridge-1] [0mCreated Actor(id=313)[0m
+[bridge-1] [0mCreated Actor(id=314)[0m
+[bridge-1] [0mCreated Actor(id=315)[0m
+[bridge-1] [0mCreated Actor(id=316)[0m
+[bridge-1] [0mCreated Actor(id=317)[0m
+[bridge-1] [0mCreated Actor(id=318)[0m
+[bridge-1] [0mCreated Actor(id=319)[0m
+[bridge-1] [0mCreated Actor(id=320)[0m
+[bridge-1] [0mCreated Actor(id=321)[0m
+[bridge-1] [0mCreated Actor(id=322)[0m
+[bridge-1] [0mCreated Actor(id=323)[0m
+[bridge-1] [0mCreated Actor(id=324)[0m
+[bridge-1] [0mCreated Actor(id=325)[0m
+[bridge-1] [0mCreated Actor(id=326)[0m
+[bridge-1] [0mCreated Actor(id=327)[0m
+[bridge-1] [0mCreated Actor(id=328)[0m
+[bridge-1] [0mCreated Actor(id=329)[0m
+[bridge-1] [0mCreated Actor(id=330)[0m
+[bridge-1] [0mCreated Actor(id=331)[0m
+[bridge-1] [0mCreated Actor(id=332)[0m
+[bridge-1] [0mCreated Actor(id=333)[0m
+[bridge-1] [0mCreated Actor(id=334)[0m
+[bridge-1] [0mCreated Actor(id=335)[0m
+[bridge-1] [0mCreated Actor(id=336)[0m
 [WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
-[bridge-1] [33mRgbCamera(172): Expected Frame 24303 not received[0m
 [ERROR] [bridge-1]: process[bridge-1] failed to terminate '5' seconds after receiving 'SIGINT', escalating to 'SIGTERM'
 [INFO] [bridge-1]: sending signal 'SIGTERM' to process[bridge-1]
 [bridge-1] [0mShutting down...[0m

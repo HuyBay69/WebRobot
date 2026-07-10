@@ -17,8 +17,27 @@ function closeModal(modalId) {
   if (modal) modal.style.display = 'none';
 }
 
+/**
+ * Đánh dấu bước đang thực hiện (1-4): làm sáng nút bước + chấm tương ứng trong
+ * pipeline bên phải. Mỗi lần bấm 1 nút, chỉ bước đó sáng (bỏ sáng các bước
+ * khác) — thay cho việc cố định sáng bước 3 như trước. Gọi ngay khi người dùng
+ * bấm vào 1 trong 4 nút bước.
+ */
+function setActiveStep(stepNumber) {
+  // Nút bước
+  for (let i = 1; i <= 4; i++) {
+    const btn = document.getElementById('btnStep' + i);
+    if (btn) btn.classList.toggle('step-btn--current', i === stepNumber);
+  }
+  // Chấm trong pipeline (thứ tự DOM của .pl-node khớp 1-4)
+  const nodes = document.querySelectorAll('.pipeline .pl-node');
+  nodes.forEach((node, idx) => {
+    node.classList.toggle('pl-node--current', idx === stepNumber - 1);
+  });
+}
+
 // ── Bước 1: Khởi động môi trường 3D CARLA ────────────────────────────────────
-document.getElementById('btnStep1').addEventListener('click', () => openModal('modalStep1'));
+document.getElementById('btnStep1').addEventListener('click', () => { setActiveStep(1); openModal('modalStep1'); });
 
 (function initCarlaControl() {
   let state = 'idle';        // 'idle' | 'starting' | 'running' | 'stopping'
@@ -125,7 +144,7 @@ document.getElementById('btnStep1').addEventListener('click', () => openModal('m
 })();
 
 // ── Bước 2: Khởi động cầu nối CARLA ROS BRIDGE ──────────────────────────────
-document.getElementById('btnStep2').addEventListener('click', () => openModal('modalStep2'));
+document.getElementById('btnStep2').addEventListener('click', () => { setActiveStep(2); openModal('modalStep2'); });
 
 (function initRosBridgeControl() {
   let busy = false;
@@ -278,6 +297,7 @@ document.getElementById('btnStep2').addEventListener('click', () => openModal('m
 
 // ── Bước 3: Điều khiển xe mô phỏng lái → sang trang điều khiển hiện tại ─────
 document.getElementById('btnStep3').addEventListener('click', () => {
+  setActiveStep(3);
   window.location.href = '/control';
 });
 
@@ -347,6 +367,7 @@ document.getElementById('btnStep3').addEventListener('click', () => {
   }
 
   btnStep4.addEventListener('click', () => {
+    setActiveStep(4);
     openModal('modalStep4');
     loadFiles();
   });

@@ -6,7 +6,7 @@
   <title>ROS2 Navigation WebUI</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css" />
   <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
 </head>
@@ -15,8 +15,8 @@
   <!-- ═══════════════════════════════ HEADER ══════════════════════════════════ -->
   <header class="header">
     <div class="header-brand">
-      <!-- Nút Back — placeholder, chưa kích hoạt (sẽ xử lý nhiều hơn là quay lại trang chính) -->
-      <button class="btn-back" id="btnBack" disabled title="Chức năng đang phát triển">
+      <!-- Nút Back — quay về trang chính (home) -->
+      <button class="btn-back" id="btnBack" title="Quay về trang chính">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M19 12H5"/>
           <path d="M12 19l-7-7 7-7"/>
@@ -35,15 +35,6 @@
           <path d="M3 9h18M9 21V9"/>
         </svg>
         Select Map
-      </button>
-      <button class="btn-connect" id="btnConnect">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M12 20h.01"/>
-          <path d="M8.5 16.5a5 5 0 0 1 7 0"/>
-          <path d="M5 12.5a9 9 0 0 1 14 0"/>
-          <path d="M1.5 8.5a14 14 0 0 1 21 0"/>
-        </svg>
-        Check ROS
       </button>
       <span class="conn-dot" id="connDot"></span>
       <span class="conn-status" id="connStatus">Checking…</span>
@@ -108,7 +99,7 @@
 
           <input class="field-input" id="goalX" type="number" step="any" placeholder="0.000" />
           <input class="field-input" id="goalY" type="number" step="any" placeholder="0.000" />
-          <button class="btn-go" id="btnSendGoal" title="Thêm điểm này vào hàng đợi hành trình">Thêm điểm</button>
+          <button class="btn-go" id="btnSendGoal" title="Thêm điểm này vào hàng đợi hành trình">Add point</button>
 
           <div class="nav-label">Speed <span class="unit">(km/h)</span></div>
           <div class="nav-label">Actual <span class="unit">(km/h)</span></div>
@@ -129,13 +120,15 @@
         <div class="mission-queue-wrap">
           <div class="mission-queue-header">
             <span class="mission-queue-title">Hàng đợi điểm</span>
-            <button class="btn-queue-clear" id="btnQueueClear" title="Xoá tất cả điểm trong hàng đợi">Xoá tất cả</button>
           </div>
           <div class="mission-queue-empty" id="missionQueueEmpty">
-            Chưa có điểm nào. Click waypoint trên bản đồ (điền X/Y) rồi bấm "Thêm điểm" để đưa vào hàng đợi.
+            Chưa có điểm nào. Click waypoint trên bản đồ (điền X/Y) rồi bấm "Add point" để đưa vào hàng đợi.
           </div>
           <ul class="mission-queue-list" id="missionQueueList"></ul>
-          <button class="btn-commit-mission" id="btnCommitMission" disabled>Chốt hành trình</button>
+          <div class="mission-queue-actions">
+            <button class="btn-commit-mission" id="btnCommitMission" disabled>Chốt hành trình</button>
+            <button class="btn-queue-clear" id="btnQueueClear" title="Xoá tất cả điểm trong hàng đợi">Xoá tất cả</button>
+          </div>
         </div>
       </section>
 

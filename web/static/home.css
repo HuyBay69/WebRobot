@@ -24,7 +24,7 @@
 
 html, body {
   height: 100%;
-  font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: 'Be Vietnam Pro', 'Segoe UI', system-ui, -apple-system, sans-serif;
   color: var(--text);
   overflow: hidden; /* trang gọn trong 1 màn hình, không cuộn */
 }

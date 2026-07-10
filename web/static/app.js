@@ -1,7 +1,6 @@
 'use strict';
 
 // ── DOM ───────────────────────────────────────────────────────────────────────
-const btnConnect     = document.getElementById('btnConnect');
 const ROLE_NAME      = 'hero';
 const connDot        = document.getElementById('connDot');
 const connStatus     = document.getElementById('connStatus');
@@ -1198,14 +1197,11 @@ function startRosStatusStream() {
   };
 }
 
-// Nút "Check ROS" — mở lại stream nếu bị đóng
-btnConnect.addEventListener('click', () => {
-  if (!rosStatusSource || rosStatusSource.readyState === EventSource.CLOSED) {
-    rosStatusSource = null;
-    startRosStatusStream();
-  }
-  addLog('info', 'Đang chờ trạng thái từ bridge_check_node…');
-});
+// Nút Back — quay về trang chính (home). Không cảnh báo gì; các tiến trình
+// nền (CARLA, bridge, xe...) vẫn chạy độc lập với giao diện nên quay về home
+// không làm gián đoạn chúng.
+const btnBack = document.getElementById('btnBack');
+if (btnBack) btnBack.addEventListener('click', () => { window.location.href = '/'; });
 
 // ── Gửi tọa độ ───────────────────────────────────────────────────────────────
 // ── Navigate (hàng đợi điểm → chốt hành trình) ───────────────────────────────
