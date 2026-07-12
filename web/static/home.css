@@ -411,6 +411,141 @@ body {
   padding-top: 22px;
 }
 
+/* ── Modal Bước 5: điều khiển ESP32 — rộng hơn để chứa canvas preview ────── */
+.modal-esp32 {
+  width: 860px;
+}
+
+.esp32-layout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.esp32-main-panel {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Panel kết nối (cột trái) ─────────────────────────────────────────────── */
+.esp32-conn-panel {
+  flex: 0 0 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(13, 17, 23, 0.4);
+}
+
+.esp32-conn-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.esp32-conn-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex-shrink: 0;
+}
+.esp32-conn-dot--online {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(0, 200, 150, 0.18);
+}
+.esp32-conn-dot--offline {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px rgba(232, 85, 85, 0.18);
+}
+
+.esp32-conn-status-text {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.esp32-conn-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.esp32-conn-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-dim);
+}
+
+.esp32-conn-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.esp32-conn-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 2px 0;
+}
+
+.esp32-preview-canvas {
+  display: block;
+  width: 100%;
+  height: 220px;
+  margin-top: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(13, 17, 23, 0.5);
+}
+
+/* Ô chọn file CSV — ẩn input gốc (mặc định trình duyệt xấu, không theo được
+   theme tối), thay bằng label bấm được style riêng + tên file hiển thị cạnh. */
+.esp32-file-picker {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.esp32-file-picker-btn {
+  flex-shrink: 0;
+  padding: 9px 16px;
+  font-size: 12.5px;
+  font-weight: 700;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+}
+.esp32-file-picker-btn:hover {
+  border-color: var(--accent);
+  background: rgba(0, 200, 150, 0.08);
+}
+
+.esp32-file-picker-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.esp32-analyze-btn {
+  width: 100%;
+  margin-top: 14px;
+}
+
 .carla-info-grid {
   display: flex;
   flex-direction: column;
@@ -640,6 +775,91 @@ body {
 .btn-confirm:disabled { opacity: .55; cursor: not-allowed; }
 .btn-confirm--danger { background: var(--danger); color: #fff; }
 .btn-confirm--danger:hover:not(:disabled) { background: #c94444; }
+
+/* ── Modal Bước 5: điều khiển ESP32 ──────────────────────────────────────── */
+.field-input-inline {
+  flex: 1;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  outline: none;
+  font-variant-numeric: tabular-nums;
+}
+.field-input-inline:focus { border-color: var(--accent); }
+.field-input-inline::placeholder { color: var(--text-dim); }
+
+.esp32-progress-list {
+  margin-top: 14px;
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.esp32-progress-empty {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  font-style: italic;
+  text-align: center;
+  padding: 16px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+}
+
+.esp32-progress-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  font-size: 12.5px;
+}
+
+.esp32-step-label {
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+}
+
+.esp32-step-status {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  padding: 3px 8px;
+  border-radius: 5px;
+  color: var(--text-dim);
+  background: rgba(255,255,255,0.06);
+}
+.esp32-step-status--running {
+  color: var(--warn);
+  background: rgba(245, 158, 11, 0.14);
+}
+.esp32-step-status--done {
+  color: var(--accent);
+  background: rgba(0, 200, 150, 0.14);
+}
+
+.esp32-completed-banner {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(0, 200, 150, 0.14);
+  border: 1px solid rgba(0, 200, 150, 0.4);
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 13px;
+  text-align: center;
+}
 
 /* ==========================================================================
    RESPONSIVE — màn hình nhỏ / hẹp

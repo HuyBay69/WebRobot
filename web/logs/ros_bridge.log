@@ -1,6 +1,6 @@
-[INFO] [launch]: All log files can be found below /home/huy/.ros/log/2026-07-10-12-32-36-369909-laptop-8923
+[INFO] [launch]: All log files can be found below /home/huy/.ros/log/2026-07-10-12-55-57-879504-laptop-14162
 [INFO] [launch]: Default logging verbosity is set to INFO
-[INFO] [bridge-1]: process started with pid [8924]
+[INFO] [bridge-1]: process started with pid [14163]
 [bridge-1] [0mTrying to connect to localhost:2000[0m
 [bridge-1] [0mLoading town 'Town01_Opt' (previous: 'Carla/Maps/Town01_Opt').[0m
 [bridge-1] [0msynchronous_mode: True[0m
@@ -184,7 +184,49 @@
 [bridge-1] [0mCreated Actor(id=334)[0m
 [bridge-1] [0mCreated Actor(id=335)[0m
 [bridge-1] [0mCreated Actor(id=336)[0m
+[bridge-1] [0mCreated TrafficLightsSensor(id=10000)[0m
+[bridge-1] [0mCreated ObjectSensor(id=10001)[0m
+[bridge-1] [0mCreated ActorListSensor(id=10002)[0m
+[bridge-1] [0mCreated MarkerSensor(id=10003)[0m
+[bridge-1] [0mCreated OpenDriveSensor(id=10004)[0m
+[bridge-1] [0mCreated EgoVehicle(id=337)[0m
+[bridge-1] [0mCreated RgbCamera(id=338)[0m
+[bridge-1] [0mCreated SemanticSegmentationCamera(id=339)[0m
+[bridge-1] [0mCreated DepthCamera(id=340)[0m
+[bridge-1] [0mCreated RgbCamera(id=341)[0m
+[bridge-1] [0mCreated ActorControl(id=10005)[0m
+[bridge-1] [0mCreated Radar(id=342)[0m
+[bridge-1] [0mCreated Gnss(id=343)[0m
+[bridge-1] [0mCreated ImuSensor(id=344)[0m
+[bridge-1] [0mCreated CollisionSensor(id=345)[0m
+[bridge-1] [0mCreated LaneInvasionSensor(id=346)[0m
+[bridge-1] [0mCreated TFSensor(id=10006)[0m
+[bridge-1] [0mCreated ObjectSensor(id=10007)[0m
+[bridge-1] [0mCreated OdometrySensor(id=10008)[0m
+[bridge-1] [0mCreated SpeedometerSensor(id=10009)[0m
+[bridge-1] [0mCreated ActorControl(id=10010)[0m
+[bridge-1] [0mCreated Vehicle(id=347)[0m
+[bridge-1] [0mCreated RgbCamera(id=352)[0m
+[bridge-1] [0mCreated CollisionSensor(id=348)[0m
+[bridge-1] [33mUnable to create publisher with type <class 'carla_msgs.msg._carla_lane_invasion_event.CarlaLaneInvasionEvent'> for topic /carla/aeb_car_town1/front because another publisher already was created for type <class 'carla_msgs.msg._carla_collision_event.CarlaCollisionEvent'>. Using alternative topic name /carla/aeb_car_town1/front_1 instead.[0m
+[bridge-1] [0mCreated LaneInvasionSensor(id=349)[0m
+[bridge-1] [0mCreated Gnss(id=350)[0m
+[bridge-1] [33mUnable to create publisher with type <class 'sensor_msgs.msg._imu.Imu'> for topic /carla/aeb_car_town1/default because another publisher already was created for type <class 'sensor_msgs.msg._nav_sat_fix.NavSatFix'>. Using alternative topic name /carla/aeb_car_town1/default_1 instead.[0m
+[bridge-1] [0mCreated ImuSensor(id=351)[0m
+[bridge-1] [33mRgbCamera(352): skipping old frame 4950, expected 4951[0m
+[bridge-1] [33mRgbCamera(352): Expected Frame 11009 not received[0m
+[bridge-1] [33mRgbCamera(352): Expected Frame 11010 not received[0m
+[bridge-1] [33mGnss(350): Expected Frame 11010 not received[0m
+[bridge-1] [33mImuSensor(351): Expected Frame 11010 not received[0m
+[bridge-1] [0mRemoved RgbCamera(id=352)[0m
+[bridge-1] [0mRemoved Vehicle(id=347)[0m
+[bridge-1] [0mRemoved CollisionSensor(id=348)[0m
+[bridge-1] [0mRemoved LaneInvasionSensor(id=349)[0m
+[bridge-1] [0mRemoved Gnss(id=350)[0m
+[bridge-1] [0mRemoved ImuSensor(id=351)[0m
+[bridge-1] [0mRemoved RgbCamera(id=338)[0m
 [WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[bridge-1] [33mDepthCamera(340): Expected Frame 11612 not received[0m
 [ERROR] [bridge-1]: process[bridge-1] failed to terminate '5' seconds after receiving 'SIGINT', escalating to 'SIGTERM'
 [INFO] [bridge-1]: sending signal 'SIGTERM' to process[bridge-1]
 [bridge-1] [0mShutting down...[0m

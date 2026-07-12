@@ -1,0 +1,8 @@
+{
+  "commands": [
+    {"type": "straight", "duration": 2.0, "from_label": "A", "to_label": "B"},
+    {"type": "turn_left", "angle": 90},
+    {"type": "straight", "duration": 1.5, "from_label": "B", "to_label": "C"},
+    {"type": "turn_right", "angle": 90}
+  ]
+}

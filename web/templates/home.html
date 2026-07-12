@@ -109,6 +109,24 @@
             </div>
           </div>
 
+          <!-- STEP 5 -->
+          <div class="step-row">
+            <button class="step-btn" id="btnStep5">
+              <span class="step-icon">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="4" y="7" width="16" height="12" rx="2"/>
+                  <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  <circle cx="9" cy="13" r="1" fill="currentColor" stroke="none"/>
+                  <circle cx="15" cy="13" r="1" fill="currentColor" stroke="none"/>
+                </svg>
+              </span>
+              <span class="step-title">Điều khiển xe ESP32 thực nghiệm</span>
+            </button>
+            <div class="step-desc">
+              <p>Gửi chuỗi lệnh hình học (đi thẳng, quay trái/phải) xuống xe ESP32 thật qua Wi-Fi, theo dõi tiến độ chạy trực tiếp trên web.</p>
+            </div>
+          </div>
+
         </div>
       </section>
 
@@ -153,6 +171,17 @@
           <div class="pl-node">
             <span class="pl-dot">4</span>
             <span class="pl-label">Phân tích dữ liệu</span>
+          </div>
+          <div class="pl-arrow">
+            <svg width="14" height="26" viewBox="0 0 14 26" fill="none">
+              <path d="M7 0v18" stroke="currentColor" stroke-width="2"/>
+              <path d="M1.5 15.5 7 22l5.5-6.5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+
+          <div class="pl-node">
+            <span class="pl-dot">5</span>
+            <span class="pl-label">Xe ESP32 thật</span>
           </div>
 
         </div>
@@ -262,6 +291,91 @@
       <div class="modal-footer-actions">
         <button class="btn-secondary" id="btnStep4Back">Quay lại</button>
         <button class="btn-confirm" id="btnStep4Plot" disabled>Vẽ đồ thị</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════ MODAL: STEP 5 — ESP32 ═══════════════════ -->
+  <div class="modal-overlay" id="modalStep5" style="display:none">
+    <div class="modal modal-carla modal-esp32">
+      <div class="modal-header">
+        <h3 class="modal-title">Điều khiển xe ESP32 thực nghiệm</h3>
+        <button class="btn-modal-close" data-close="modalStep5" title="Đóng">✕</button>
+      </div>
+
+      <div class="esp32-layout">
+        <!-- ── Cột trái: thông tin kết nối ESP32 (real-time) ────────────── -->
+        <div class="esp32-conn-panel">
+          <div class="esp32-conn-row">
+            <span class="esp32-conn-dot" id="esp32ConnDot"></span>
+            <span class="esp32-conn-status-text" id="esp32ConnStatusText">Chưa kết nối</span>
+          </div>
+
+          <div class="esp32-conn-field">
+            <span class="esp32-conn-label">IP</span>
+            <span class="esp32-conn-value" id="esp32ConnIp">—</span>
+          </div>
+
+          <div class="esp32-conn-field">
+            <span class="esp32-conn-label">Chất lượng Wi-Fi</span>
+            <span class="esp32-conn-value" id="esp32ConnRssi">—</span>
+          </div>
+
+          <div class="esp32-conn-divider" id="esp32StatsDivider" style="display:none"></div>
+
+          <div class="esp32-conn-field" id="esp32PacketField" style="display:none">
+            <span class="esp32-conn-label">Gói tin</span>
+            <span class="esp32-conn-value" id="esp32ConnPackets">—</span>
+          </div>
+
+          <div class="esp32-conn-field" id="esp32LossField" style="display:none">
+            <span class="esp32-conn-label">Tỉ lệ mất gói</span>
+            <span class="esp32-conn-value" id="esp32ConnLoss">—</span>
+          </div>
+
+          <div class="esp32-conn-field" id="esp32LatencyField" style="display:none">
+            <span class="esp32-conn-label">Độ trễ trung bình</span>
+            <span class="esp32-conn-value" id="esp32ConnLatency">—</span>
+          </div>
+        </div>
+
+        <!-- ── Cột phải: điều khiển (giữ nguyên như trước) ──────────────── -->
+        <div class="esp32-main-panel">
+          <div class="info-row">
+            <span class="info-label">IP ESP32:</span>
+            <input type="text" class="field-input-inline" id="esp32IpInput" placeholder="vd: 10.42.0.123" autocomplete="off" />
+          </div>
+
+          <div class="info-row">
+            <span class="info-label">Hệ số thời gian:</span>
+            <input type="number" class="field-input-inline" id="esp32TimeScaleInput" placeholder="1.0" min="0" max="1" step="0.01" value="1" title="0.0 - 1.0. Vd 0.01 = mọi đoạn thẳng chạy bằng 1/100 thời gian ghi được trong CARLA." />
+          </div>
+
+          <div class="info-row" style="align-items: flex-start;">
+            <span class="info-label">File CSV:</span>
+            <div class="esp32-file-picker">
+              <label for="esp32CsvFile" class="esp32-file-picker-btn">Chọn file CSV</label>
+              <input type="file" id="esp32CsvFile" accept=".csv" style="display:none" />
+              <span class="esp32-file-picker-name" id="esp32CsvFileName">Chưa chọn file nào</span>
+            </div>
+          </div>
+
+          <button type="button" class="btn-confirm esp32-analyze-btn" id="btnEsp32Analyze" disabled>Phân tích quỹ đạo</button>
+          <p class="render-note" id="esp32ConvertStatus">Chọn file CSV, chỉnh hệ số thời gian nếu cần, rồi bấm "Phân tích quỹ đạo".</p>
+
+          <canvas id="esp32PreviewCanvas" class="esp32-preview-canvas" width="380" height="180" style="display:none"></canvas>
+
+          <div class="esp32-progress-list" id="esp32ProgressList">
+            <div class="esp32-progress-empty" id="esp32ProgressEmpty">Chưa có chuỗi lệnh nào.</div>
+          </div>
+
+          <div class="esp32-completed-banner" id="esp32CompletedBanner" style="display:none">✓ Hoàn thành toàn bộ hành trình!</div>
+        </div>
+      </div>
+
+      <div class="modal-footer-actions">
+        <button class="btn-secondary" id="btnStep5Back">Quay lại</button>
+        <button class="btn-confirm" id="btnStep5Send" disabled>Gửi lệnh tới ESP32</button>
       </div>
     </div>
   </div>

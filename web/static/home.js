@@ -25,11 +25,11 @@ function closeModal(modalId) {
  */
 function setActiveStep(stepNumber) {
   // Nút bước
-  for (let i = 1; i <= 4; i++) {
+  for (let i = 1; i <= 5; i++) {
     const btn = document.getElementById('btnStep' + i);
     if (btn) btn.classList.toggle('step-btn--current', i === stepNumber);
   }
-  // Chấm trong pipeline (thứ tự DOM của .pl-node khớp 1-4)
+  // Chấm trong pipeline (thứ tự DOM của .pl-node khớp 1-5)
   const nodes = document.querySelectorAll('.pipeline .pl-node');
   nodes.forEach((node, idx) => {
     node.classList.toggle('pl-node--current', idx === stepNumber - 1);
@@ -404,6 +404,350 @@ document.getElementById('btnStep3').addEventListener('click', () => {
   });
 
   btnBack.addEventListener('click', () => closeModal('modalStep4'));
+})();
+
+// ── Bước 5: Điều khiển xe ESP32 thực nghiệm ─────────────────────────────────
+// Chiều 1 (Web → ESP32): gửi 1 lần toàn bộ chuỗi lệnh hình học qua HTTP POST.
+// Chiều 2 (ESP32 → Web): ESP32 tự báo tiến độ về server (POST /api/esp32/progress),
+// server phát lại qua SSE để trang này cập nhật real-time không cần polling.
+(function initEsp32Control() {
+  const btnStep5   = document.getElementById('btnStep5');
+  const btnBack    = document.getElementById('btnStep5Back');
+  const btnSend    = document.getElementById('btnStep5Send');
+  const ipInput    = document.getElementById('esp32IpInput');
+  const timeScaleInput = document.getElementById('esp32TimeScaleInput');
+  const csvInput   = document.getElementById('esp32CsvFile');
+  const csvFileName = document.getElementById('esp32CsvFileName');
+  const btnAnalyze  = document.getElementById('btnEsp32Analyze');
+  const convertStatus = document.getElementById('esp32ConvertStatus');
+  const canvas     = document.getElementById('esp32PreviewCanvas');
+  const listBox    = document.getElementById('esp32ProgressList');
+  const listEmpty  = document.getElementById('esp32ProgressEmpty');
+  const banner     = document.getElementById('esp32CompletedBanner');
+
+  // Panel kết nối (cột trái)
+  const connDot        = document.getElementById('esp32ConnDot');
+  const connStatusText = document.getElementById('esp32ConnStatusText');
+  const connIp          = document.getElementById('esp32ConnIp');
+  const connRssi         = document.getElementById('esp32ConnRssi');
+  const statsDivider     = document.getElementById('esp32StatsDivider');
+  const packetField      = document.getElementById('esp32PacketField');
+  const connPackets       = document.getElementById('esp32ConnPackets');
+  const lossField          = document.getElementById('esp32LossField');
+  const connLoss            = document.getElementById('esp32ConnLoss');
+  const latencyField         = document.getElementById('esp32LatencyField');
+  const connLatency           = document.getElementById('esp32ConnLatency');
+
+  let lastHeartbeatAt = 0;  // Date.now() lần cuối nhận được heartbeat/tiến độ nào đó — tự phát hiện mất kết nối phía trình duyệt
+
+  let parsedCommands = null;
+  let progressSource = null;
+
+  // Nhớ lại IP ESP32 đã nhập lần trước, khỏi phải gõ lại mỗi lần.
+  ipInput.value = localStorage.getItem('esp32Ip') || '';
+  ipInput.addEventListener('change', () => localStorage.setItem('esp32Ip', ipInput.value.trim()));
+
+  timeScaleInput.value = localStorage.getItem('esp32TimeScale') || '1';
+  timeScaleInput.addEventListener('change', () => localStorage.setItem('esp32TimeScale', timeScaleInput.value));
+
+  // Mô tả từng lệnh — thời gian hiện theo đúng đơn vị gốc "time_ms" (mili-giây),
+  // không quy đổi sang giây, để khớp chính xác giá trị thực sự gửi cho ESP32.
+  function describeCommand(cmd) {
+    if (cmd.command === 'straight') {
+      return `Đi thẳng ${cmd.time_ms || 0} ms`;
+    }
+    if (cmd.command === 'turn') {
+      const angle = cmd.turn_angle || 0;
+      const direction = angle > 0 ? 'trái' : 'phải';
+      return `Quay ${direction} ${Math.abs(angle)}°`;
+    }
+    return `Lệnh không rõ (${cmd.command})`;
+  }
+
+  function renderPendingList(commands) {
+    listEmpty.style.display = 'none';
+    banner.style.display = 'none';
+    resetConnectionStatsDisplay();
+    listBox.querySelectorAll('.esp32-progress-item').forEach(el => el.remove());
+    commands.forEach((cmd, i) => {
+      const row = document.createElement('div');
+      row.className = 'esp32-progress-item';
+      row.innerHTML = `
+        <span class="esp32-step-label">Bước ${i + 1}: ${describeCommand(cmd)}</span>
+        <span class="esp32-step-status" id="esp32StepStatus${i}">Chờ</span>
+      `;
+      listBox.appendChild(row);
+    });
+  }
+
+  function updateStepStatus(index, status) {
+    const el = document.getElementById('esp32StepStatus' + index);
+    if (!el) return;
+    if (status === 'running') {
+      el.textContent = 'Đang chạy';
+      el.className = 'esp32-step-status esp32-step-status--running';
+    } else if (status === 'done') {
+      el.textContent = 'Xong';
+      el.className = 'esp32-step-status esp32-step-status--done';
+    } else {
+      el.textContent = 'Chờ';
+      el.className = 'esp32-step-status';
+    }
+  }
+
+  // Vẽ đường thẳng đã đơn giản hoá (kết quả cuối, KHÔNG vẽ quỹ đạo gốc) lên
+  // canvas — tự co giãn theo khung hình chữ nhật bao quanh các điểm, chừa lề.
+  function drawPreview(vertices) {
+    if (!vertices || vertices.length < 2) {
+      canvas.style.display = 'none';
+      return;
+    }
+    canvas.style.display = 'block';
+
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    const xs = vertices.map(p => p[0]);
+    const ys = vertices.map(p => p[1]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const spanX = Math.max(maxX - minX, 1e-6);
+    const spanY = Math.max(maxY - minY, 1e-6);
+
+    const PAD = 24;
+    const scale = Math.min((W - PAD * 2) / spanX, (H - PAD * 2) / spanY);
+
+    // Toạ độ Y màn hình đảo chiều so với Y toán học (Y lên trên) — đảo lại để
+    // hình vẽ không bị lộn ngược so với hướng thật của quỹ đạo.
+    function toScreen(p) {
+      const sx = PAD + (p[0] - minX) * scale;
+      const sy = H - PAD - (p[1] - minY) * scale;
+      return [sx, sy];
+    }
+
+    ctx.strokeStyle = 'rgba(0, 200, 150, 0.95)';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    vertices.forEach((p, i) => {
+      const [sx, sy] = toScreen(p);
+      if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+    });
+    ctx.stroke();
+
+    // Chấm điểm bắt đầu (xanh lá) / kết thúc (đỏ), các góc giữa (cam nhỏ)
+    vertices.forEach((p, i) => {
+      const [sx, sy] = toScreen(p);
+      ctx.beginPath();
+      ctx.arc(sx, sy, i === 0 || i === vertices.length - 1 ? 6 : 4, 0, Math.PI * 2);
+      ctx.fillStyle = i === 0 ? '#2ecc71' : (i === vertices.length - 1 ? '#e74c3c' : '#f39c12');
+      ctx.fill();
+    });
+  }
+
+  function setConvertStatus(text, isError) {
+    convertStatus.textContent = text;
+    convertStatus.style.color = isError ? 'var(--danger)' : '';
+  }
+
+  // Chọn file — CHỈ cập nhật tên hiển thị + bật nút "Phân tích", KHÔNG tự động
+  // upload. Cố ý tách riêng khỏi việc phân tích: input[type=file] không bắn
+  // sự kiện "change" nếu chọn LẠI đúng file cũ (đặc điểm chuẩn của trình
+  // duyệt) — nếu để tự động upload ngay trong handler này, người dùng đổi hệ
+  // số thời gian rồi chọn lại file cũ sẽ không kích hoạt gì cả, tưởng nhầm là
+  // hệ số "không cập nhật". Bấm nút riêng luôn đọc giá trị mới nhất, không
+  // phụ thuộc sự kiện change nữa.
+  csvInput.addEventListener('change', () => {
+    const file = csvInput.files[0];
+    csvFileName.textContent = file ? file.name : 'Chưa chọn file nào';
+    btnAnalyze.disabled = !file;
+
+    parsedCommands = null;
+    btnSend.disabled = true;
+    canvas.style.display = 'none';
+    listEmpty.style.display = 'block';
+    listBox.querySelectorAll('.esp32-progress-item').forEach(el => el.remove());
+    setConvertStatus('Đã chọn file — chỉnh hệ số thời gian nếu cần rồi bấm "Phân tích quỹ đạo".', false);
+  });
+
+  btnAnalyze.addEventListener('click', () => {
+    const file = csvInput.files[0];
+    if (!file) {
+      setConvertStatus('Chưa chọn file CSV nào.', true);
+      return;
+    }
+
+    btnAnalyze.disabled = true;
+    btnAnalyze.textContent = 'Đang phân tích…';
+    setConvertStatus('Đang phân tích quỹ đạo…', false);
+
+    const formData = new FormData();
+    formData.append('csv', file);
+    formData.append('time_scale', timeScaleInput.value.trim() || '1');
+
+    fetch('/api/esp32/convert_csv', { method: 'POST', body: formData })
+      .then(r => r.json())
+      .then(data => {
+        btnAnalyze.disabled = false;
+        btnAnalyze.textContent = 'Phân tích quỹ đạo';
+        if (!data.ok) {
+          setConvertStatus('Lỗi: ' + data.error, true);
+          return;
+        }
+        parsedCommands = data.commands;
+        btnSend.disabled = false;
+        setConvertStatus(`Đã phân tích thành ${data.commands.length} lệnh (${data.preview_vertices.length} đoạn thẳng) — hệ số thời gian ${timeScaleInput.value.trim() || '1'}.`, false);
+        drawPreview(data.preview_vertices);
+        renderPendingList(parsedCommands);
+      })
+      .catch(err => {
+        btnAnalyze.disabled = false;
+        btnAnalyze.textContent = 'Phân tích quỹ đạo';
+        setConvertStatus('Không thể kết nối server: ' + err.message, true);
+      });
+  });
+
+  // RSSI (dBm, thường -30 đến -90) → nhãn chất lượng dễ hiểu.
+  function rssiToLabel(rssi) {
+    if (rssi === null || rssi === undefined) return '—';
+    if (rssi > -50) return `Rất tốt (${rssi} dBm)`;
+    if (rssi > -60) return `Tốt (${rssi} dBm)`;
+    if (rssi > -70) return `Trung bình (${rssi} dBm)`;
+    if (rssi > -80) return `Yếu (${rssi} dBm)`;
+    return `Rất yếu (${rssi} dBm)`;
+  }
+
+  function setConnectionOnline(ip, rssi) {
+    lastHeartbeatAt = Date.now();
+    connDot.className = 'esp32-conn-dot esp32-conn-dot--online';
+    connStatusText.textContent = 'Đã kết nối';
+    if (ip) connIp.textContent = ip;
+    if (rssi !== undefined && rssi !== null) connRssi.textContent = rssiToLabel(rssi);
+  }
+
+  function setConnectionOffline() {
+    connDot.className = 'esp32-conn-dot esp32-conn-dot--offline';
+    connStatusText.textContent = 'Mất kết nối';
+  }
+
+  // Tự kiểm tra định kỳ — nếu quá lâu không nhận được heartbeat/tiến độ nào,
+  // coi như mất kết nối NGAY CẢ KHI kết nối SSE tới Flask vẫn còn (vd ESP32 bị
+  // rút nguồn/rớt Wi-Fi nhưng trình duyệt vẫn đang mở trang bình thường).
+  const CONN_STALE_MS = 6000;
+  setInterval(() => {
+    if (lastHeartbeatAt && Date.now() - lastHeartbeatAt > CONN_STALE_MS) {
+      setConnectionOffline();
+    }
+  }, 1000);
+
+  function showCompletionSummary(summary) {
+    banner.style.display = 'block';
+    if (!summary) return;
+
+    statsDivider.style.display = 'block';
+
+    if (typeof summary.received_packets === 'number') {
+      packetField.style.display = 'flex';
+      const expected = summary.expected_packets;
+      connPackets.textContent = expected
+        ? `${summary.received_packets} / ${expected}`
+        : `${summary.received_packets}`;
+    }
+
+    if (summary.loss_pct !== null && summary.loss_pct !== undefined) {
+      lossField.style.display = 'flex';
+      connLoss.textContent = `${summary.loss_pct}%`;
+      connLoss.style.color = summary.loss_pct > 5 ? 'var(--danger)' : 'var(--accent)';
+    }
+
+    if (summary.avg_latency_ms !== null && summary.avg_latency_ms !== undefined) {
+      latencyField.style.display = 'flex';
+      connLatency.textContent = `${Math.round(summary.avg_latency_ms)} ms`;
+    }
+  }
+
+  function resetConnectionStatsDisplay() {
+    statsDivider.style.display = 'none';
+    packetField.style.display = 'none';
+    lossField.style.display = 'none';
+    latencyField.style.display = 'none';
+  }
+
+  function connectProgressStream() {
+    if (progressSource) progressSource.close();
+    progressSource = new EventSource('/api/esp32/progress-stream');
+    progressSource.onmessage = (e) => {
+      let data;
+      try { data = JSON.parse(e.data); } catch { return; }
+
+      if (data.type === 'reset' && Array.isArray(data.progress) && data.progress.length) {
+        // Server đã có tiến độ từ trước (vd mở lại modal giữa chừng) — không
+        // ghi đè danh sách mô tả bước hiện có nếu người dùng chưa tải file mới.
+        data.progress.forEach(p => updateStepStatus(p.index, p.status));
+      } else if (data.type === 'update') {
+        updateStepStatus(data.index, data.status);
+        setConnectionOnline();
+      } else if (data.type === 'heartbeat') {
+        setConnectionOnline(data.ip, data.rssi);
+      } else if (data.type === 'completed') {
+        setConnectionOnline();
+        showCompletionSummary(data.summary);
+      }
+    };
+  }
+
+  // Poll dự phòng lúc vừa mở modal — có ngay trạng thái kết nối hiện tại thay
+  // vì phải chờ heartbeat tiếp theo (tối đa 2s) mới biết.
+  function pollConnectionStatusOnce() {
+    fetch('/api/esp32/connection_status')
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok && data.connected) {
+          setConnectionOnline(data.ip, data.rssi);
+        } else if (data.ok) {
+          if (data.ip) connIp.textContent = data.ip;
+          setConnectionOffline();
+        }
+      })
+      .catch(() => {});
+  }
+
+  btnStep5.addEventListener('click', () => {
+    setActiveStep(5);
+    openModal('modalStep5');
+    connectProgressStream();
+    pollConnectionStatusOnce();
+  });
+
+  btnSend.addEventListener('click', () => {
+    const ip = ipInput.value.trim();
+    if (!ip) { alert('Nhập địa chỉ IP ESP32 trước.'); return; }
+    if (!parsedCommands) { alert('Tải file CSV và chờ phân tích xong trước.'); return; }
+
+    btnSend.disabled = true;
+    btnSend.textContent = 'Đang gửi…';
+
+    fetch('/api/esp32/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ esp32_ip: ip, commands: parsedCommands }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        btnSend.textContent = 'Gửi lệnh tới ESP32';
+        btnSend.disabled = false;
+        if (!data.ok) alert('Lỗi: ' + data.error);
+      })
+      .catch(err => {
+        btnSend.textContent = 'Gửi lệnh tới ESP32';
+        btnSend.disabled = false;
+        alert('Không thể kết nối server: ' + err.message);
+      });
+  });
+
+  btnBack.addEventListener('click', () => closeModal('modalStep5'));
 })();
 
 // ── Đóng modal: nút X, click ra ngoài overlay, hoặc phím Esc ────────────────

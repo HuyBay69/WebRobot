@@ -1,0 +1,6 @@
+[
+  {"index": 0, "command": "straight", "time_ms": 1000, "turn_angle": 0},
+  {"index": 1, "command": "turn", "time_ms": 0, "turn_angle": 90},
+  {"index": 2, "command": "straight", "time_ms": 1000, "turn_angle": 0},
+  {"index": 3, "command": "turn", "time_ms": 0, "turn_angle": -90}
+]
