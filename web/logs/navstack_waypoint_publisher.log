@@ -1,58 +1,31 @@
-[INFO] [launch]: All log files can be found below /home/huy/.ros/log/2026-07-10-12-56-16-533603-laptop-14297
+[INFO] [launch]: All log files can be found below /home/huy/.ros/log/2026-07-15-00-41-41-806822-laptop-19379
 [INFO] [launch]: Default logging verbosity is set to INFO
-[INFO] [carla_waypoint_publisher-1]: process started with pid [14315]
+[INFO] [carla_waypoint_publisher-1]: process started with pid [19410]
 [carla_waypoint_publisher-1] [0mWaiting for CARLA world (topic: /carla/world_info)...[0m
 [carla_waypoint_publisher-1] [0mCARLA world available. Trying to connect to localhost:2000[0m
 [carla_waypoint_publisher-1] [0mConnected to Carla.[0m
 [carla_waypoint_publisher-1] [0mWaiting for ego vehicle...[0m
 [carla_waypoint_publisher-1] [0mEgo vehicle changed.[0m
-[carla_waypoint_publisher-1] [0mCalculating route to x=299.3999938964844, y=133.2400360107422, z=0.29999998211860657[0m
-[carla_waypoint_publisher-1] [0mPublished 502 waypoints.[0m
+[carla_waypoint_publisher-1] [0mCalculating route to x=4.177803039550781, y=122.98249816894531, z=4.0[0m
+[carla_waypoint_publisher-1] [0mPublished 289 waypoints.[0m
 [carla_waypoint_publisher-1] [0mReceived goal, trigger rerouting...[0m
-[carla_waypoint_publisher-1] [0mCalculating route to x=135.1241455078125, y=133.8167724609375, z=0.0[0m
-[carla_waypoint_publisher-1] [0mPublished 100 waypoints.[0m
+[carla_waypoint_publisher-1] [0mCalculating route to x=114.51499938964844, y=-32.64699935913086, z=0.0[0m
+[carla_waypoint_publisher-1] [0mPublished 155 waypoints.[0m
 [carla_waypoint_publisher-1] [0mReceived goal, trigger rerouting...[0m
-[carla_waypoint_publisher-1] [0mCalculating route to x=103.35233306884766, y=129.53700256347656, z=0.0[0m
-[carla_waypoint_publisher-1] [0mPublished 623 waypoints.[0m
-[carla_waypoint_publisher-1] [0mEgo vehicle was repositioned.[0m
-[carla_waypoint_publisher-1] [0mCalculating route to x=103.35233306884766, y=129.53700256347656, z=0.0[0m
-[carla_waypoint_publisher-1] [0mPublished 979 waypoints.[0m
+[carla_waypoint_publisher-1] [0mCalculating route to x=-49.57099914550781, y=-131.0800018310547, z=0.0[0m
+[carla_waypoint_publisher-1] [0mPublished 254 waypoints.[0m
 [carla_waypoint_publisher-1] [0mReceived goal, trigger rerouting...[0m
-[carla_waypoint_publisher-1] [0mCalculating route to x=274.5530090332031, y=194.1191864013672, z=0.0[0m
-[carla_waypoint_publisher-1] [0mPublished 49 waypoints.[0m
-[carla_waypoint_publisher-1] [0mEgo vehicle was repositioned.[0m
-[carla_waypoint_publisher-1] [0mCalculating route to x=274.5530090332031, y=194.1191864013672, z=0.0[0m
-[carla_waypoint_publisher-1] [0mPublished 183 waypoints.[0m
+[carla_waypoint_publisher-1] [0mCalculating route to x=-88.37200164794922, y=23.231000900268555, z=0.0[0m
+[carla_waypoint_publisher-1] [0mPublished 219 waypoints.[0m
 [carla_waypoint_publisher-1] [0mReceived goal, trigger rerouting...[0m
-[carla_waypoint_publisher-1] [0mCalculating route to x=267.1330261230469, y=129.4779510498047, z=0.0[0m
-[carla_waypoint_publisher-1] [0mPublished 124 waypoints.[0m
-[carla_waypoint_publisher-1] [0mEgo vehicle was repositioned.[0m
-[carla_waypoint_publisher-1] [0mCalculating route to x=267.1330261230469, y=129.4779510498047, z=0.0[0m
-[carla_waypoint_publisher-1] [0mPublished 124 waypoints.[0m
+[carla_waypoint_publisher-1] [0mCalculating route to x=-153.74000549316406, y=29.79800033569336, z=0.0[0m
+[carla_waypoint_publisher-1] [0mPublished 177 waypoints.[0m
 [carla_waypoint_publisher-1] [0mReceived goal, trigger rerouting...[0m
-[carla_waypoint_publisher-1] [0mCalculating route to x=159.65335083007812, y=128.99343872070312, z=0.0[0m
-[carla_waypoint_publisher-1] [0mPublished 232 waypoints.[0m
-[carla_waypoint_publisher-1] [0mEgo vehicle was repositioned.[0m
-[carla_waypoint_publisher-1] [0mCalculating route to x=159.65335083007812, y=128.99343872070312, z=0.0[0m
-[carla_waypoint_publisher-1] [0mPublished 162 waypoints.[0m
-[carla_waypoint_publisher-1] [0mEgo vehicle was repositioned.[0m
-[carla_waypoint_publisher-1] [0mCalculating route to x=159.65335083007812, y=128.99343872070312, z=0.0[0m
-[carla_waypoint_publisher-1] [0mPublished 162 waypoints.[0m
+[carla_waypoint_publisher-1] [0mCalculating route to x=-137.9709930419922, y=141.31100463867188, z=0.0[0m
+[carla_waypoint_publisher-1] [0mPublished 313 waypoints.[0m
 [carla_waypoint_publisher-1] [0mReceived goal, trigger rerouting...[0m
-[carla_waypoint_publisher-1] [0mCalculating route to x=93.90374755859375, y=96.746826171875, z=0.0[0m
-[carla_waypoint_publisher-1] [0mPublished 120 waypoints.[0m
-[carla_waypoint_publisher-1] [0mReceived goal, trigger rerouting...[0m
-[carla_waypoint_publisher-1] [0mCalculating route to x=92.37200164794922, y=13.239999771118164, z=0.0[0m
-[carla_waypoint_publisher-1] [0mPublished 86 waypoints.[0m
-[carla_waypoint_publisher-1] [0mReceived goal, trigger rerouting...[0m
-[carla_waypoint_publisher-1] [0mCalculating route to x=207.6300048828125, y=1.9609999656677246, z=0.0[0m
-[carla_waypoint_publisher-1] [0mPublished 140 waypoints.[0m
-[carla_waypoint_publisher-1] [0mReceived goal, trigger rerouting...[0m
-[carla_waypoint_publisher-1] [0mCalculating route to x=207.6300048828125, y=1.9609999656677246, z=0.0[0m
-[carla_waypoint_publisher-1] [0mPublished 3 waypoints.[0m
-[carla_waypoint_publisher-1] [0mReceived goal, trigger rerouting...[0m
-[carla_waypoint_publisher-1] [0mCalculating route to x=364.5889892578125, y=2.009000062942505, z=0.0[0m
-[carla_waypoint_publisher-1] [0mPublished 160 waypoints.[0m
+[carla_waypoint_publisher-1] [0mCalculating route to x=0.0, y=-0.0, z=0.0[0m
+[carla_waypoint_publisher-1] [0mPublished 524 waypoints.[0m
 [WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
 [ERROR] [carla_waypoint_publisher-1]: process[carla_waypoint_publisher-1] failed to terminate '5' seconds after receiving 'SIGINT', escalating to 'SIGTERM'
 [INFO] [carla_waypoint_publisher-1]: sending signal 'SIGTERM' to process[carla_waypoint_publisher-1]
@@ -90,4 +63,4 @@
 [carla_waypoint_publisher-1]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
 [carla_waypoint_publisher-1]     self.__context.shutdown()
 [carla_waypoint_publisher-1] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
-[ERROR] [carla_waypoint_publisher-1]: process has died [pid 14315, exit code 1, cmd '/home/huy/CARLA/bridge_ws/install/carla_waypoint_publisher/lib/carla_waypoint_publisher/carla_waypoint_publisher --ros-args -r __node:=carla_waypoint_publisher --params-file /tmp/launch_params_ctekkmic --params-file /tmp/launch_params_7oezjbkc --params-file /tmp/launch_params_ysf_m01m --params-file /tmp/launch_params_6kt39q4c'].
+[ERROR] [carla_waypoint_publisher-1]: process has died [pid 19410, exit code 1, cmd '/home/huy/CARLA/bridge_ws/install/carla_waypoint_publisher/lib/carla_waypoint_publisher/carla_waypoint_publisher --ros-args -r __node:=carla_waypoint_publisher --params-file /tmp/launch_params_g3ayy3nl --params-file /tmp/launch_params_8cqxwx0v --params-file /tmp/launch_params_72ymjx9p --params-file /tmp/launch_params_0od6jd61'].

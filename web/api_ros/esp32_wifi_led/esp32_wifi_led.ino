@@ -8,28 +8,12 @@
  *   - Đã kết nối thành công   → XANH SÁNG HẲN (không nháy nữa)
  *   - Mất kết nối giữa chừng  → tự động quay lại nháy chậm + thử kết nối lại
  *
- * THUẬT TOÁN DI CHUYỂN (đã chốt với người dùng trước khi viết):
- *   - Đi thẳng: bộ điều khiển P đơn thuần bù trôi yaw (không PID — ESP32
- *     không có encoder bánh xe nên I/D không có nhiều ý nghĩa, P đơn giản dễ
- *     tinh chỉnh thực nghiệm là đủ).
- *   - Quay 90°: quay TẠI CHỖ (pivot) — 2 bánh quay NGƯỢC chiều nhau, KHÔNG
- *     giảm tốc khi gần đạt góc đích (giữ nguyên BASE_PWM xuyên suốt, dừng
- *     ngay khi đủ góc).
+ * THUẬT TOÁN DI CHUYỂN:
+ *   - Đi thẳng: bộ điều khiển P đơn thuần bù trôi yaw.
+ *   - Quay: Cắt điện sớm trước khi đạt 90 độ để bù quán tính (tránh quay quá đà).
  *
  * THƯ VIỆN CẦN CÀI (Arduino IDE → Library Manager):
- *   - ArduinoJson (bởi Benoit Blanchon), bản 7.x (code dùng JsonDocument
- *     không cố định kích thước — nếu bạn đang có ArduinoJson 6.x, đổi
- *     `JsonDocument doc;` thành `DynamicJsonDocument doc(4096);`)
- *   (WiFi.h, WebServer.h, HTTPClient.h, Wire.h đã có sẵn trong ESP32 core)
- *
- * CẦN BẠN ĐIỀN/CHỈNH TRƯỚC KHI NẠP:
- *   1. WIFI_SSID / WIFI_PASSWORD — đã điền theo bạn báo (ESP32_CONTROL / 12345678).
- *   2. LED_PIN — mặc định GPIO2, đổi lại nếu board bạn dùng chân khác.
- *   3. KP_STRAIGHT — cần TINH CHỈNH THỰC NGHIỆM trên xe thật (xem ghi chú ở
- *      hằng số bên dưới). Nếu sau khi chạy thử thấy xe lệch NGÀY CÀNG XA
- *      (không phải sửa lại), đảo dấu hằng số này trước, rồi mới tăng/giảm độ lớn.
- *   4. Có thể cần đảo dấu ở runTurnStep() nếu chiều quay trái/phải bị ngược so
- *      với turn_angle — xem ghi chú ngay tại hàm đó.
+ *   - ArduinoJson (bởi Benoit Blanchon), bản 7.x
  */
 
 #include <WiFi.h>
@@ -62,27 +46,18 @@ bool ledState = false;
 WebServer server(80);
 
 // ═══════════════════════════════════════════════════════════════════════════
-// L298N — điều khiển động cơ (theo Promt.txt)
+// L298N — điều khiển động cơ
 // ═══════════════════════════════════════════════════════════════════════════
 const int ENA = 25, IN1 = 26, IN2 = 27;  // Kênh A — cặp bánh TRÁI
 const int ENB = 32, IN3 = 33, IN4 = 14;  // Kênh B — cặp bánh PHẢI
 const bool LEFT_REVERSED  = true;
 const bool RIGHT_REVERSED = false;
-const int  BASE_PWM = 200;      // 0-255 — dùng khi QUAY (turn), giữ mức gốc
-const int  STRAIGHT_PWM = 180;  // 0-255 — dùng riêng khi ĐI THẲNG (straight), thấp hơn BASE_PWM 1 chút để chạy chậm/an toàn hơn lúc thẳng đường
+const int  BASE_PWM = 200;      // 0-255 — dùng khi QUAY (turn)
+const int  STRAIGHT_PWM = 200;  // 0-255 — dùng khi ĐI THẲNG (straight)
 
-// PWM (LEDC) — dùng API core 3.x: ledcAttach(chân, tần_số, độ_phân_giải) rồi
-// ledcWrite(chân, giá_trị) — KHÔNG còn ledcSetup()/ledcAttachPin()/số kênh
-// riêng như core 2.x cũ (core mới tự quản lý kênh nội bộ theo chân GPIO).
-// Nếu bạn dùng core 2.x cũ hơn và gặp lỗi ngược lại ("ledcAttach was not
-// declared"), đổi 2 dòng ledcAttach() trong motorsInit() thành:
-//   ledcSetup(0, PWM_FREQ, PWM_RESOLUTION); ledcAttachPin(ENA, 0);
-//   ledcSetup(1, PWM_FREQ, PWM_RESOLUTION); ledcAttachPin(ENB, 1);
-// và đổi ledcWrite(ENA,...)/ledcWrite(ENB,...) thành ledcWrite(0,...)/ledcWrite(1,...).
-const int PWM_FREQ = 20000;  // 20kHz — TRÊN ngưỡng tai người nghe được (đã tăng từ 5000, vốn gây tiếng rít "i i i" vì nằm giữa dải nghe rõ nhất của tai). L298N vẫn hoạt động tốt ở tần số này.
+const int PWM_FREQ = 20000;  // 20kHz
 const int PWM_RESOLUTION = 8;  // 0-255
 
-// pwm: -255..255 — âm = lùi, dương = tiến (trước khi áp dụng cờ *_REVERSED)
 void setMotorLeft(int pwm) {
   bool forward = pwm >= 0;
   if (LEFT_REVERSED) forward = !forward;
@@ -123,8 +98,7 @@ void motorsInit() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MPU6050 — đọc thanh ghi trực tiếp qua Wire (không dùng thư viện Adafruit,
-// theo đúng yêu cầu Promt.txt)
+// MPU6050 — đọc thanh ghi trực tiếp qua Wire
 // ═══════════════════════════════════════════════════════════════════════════
 const int MPU_SDA = 23, MPU_SCL = 22;
 const uint8_t MPU_ADDR = 0x68;
@@ -165,7 +139,7 @@ int16_t mpuReadWord(uint8_t reg) {
 void mpuInit() {
   Wire.begin(MPU_SDA, MPU_SCL);
 
-  mpuWriteRegister(MPU_REG_PWR_MGMT_1, 0x00);   // đánh thức MPU (thoát sleep)
+  mpuWriteRegister(MPU_REG_PWR_MGMT_1, 0x00);   // đánh thức MPU
   mpuWriteRegister(MPU_REG_GYRO_CONFIG, 0x08);  // FS_SEL=1  -> ±500 deg/s
   mpuWriteRegister(MPU_REG_ACCEL_CONFIG, 0x08); // AFS_SEL=1 -> ±4g
   delay(100);
@@ -173,12 +147,9 @@ void mpuInit() {
   uint8_t who = mpuReadByte(MPU_REG_WHO_AM_I);
   Serial.print("MPU WHO_AM_I = 0x");
   Serial.println(who, HEX);
-  if (who != 0x70) {
-    Serial.println("Cảnh báo: WHO_AM_I khác 0x70 như Promt.txt ghi — kiểm tra lại dây nối/địa chỉ I2C.");
-  }
 }
 
-// ── Hiệu chỉnh bias gyro Z — giữ xe đứng yên 3s, lấy trung bình 300 mẫu ────
+// ── Hiệu chỉnh bias gyro Z ────────────────────────────────────────────────
 float gyroBiasZ = 0.0;  // độ/s
 
 void calibrateGyro() {
@@ -198,8 +169,8 @@ void calibrateGyro() {
   Serial.println(" độ/s");
 }
 
-// ── Tích luỹ yaw liên tục — gọi mỗi vòng loop() lúc đang chạy 1 lệnh ───────
-float yaw = 0.0;  // độ, tích luỹ từ lúc handleCommands() nhận lệnh mới
+// ── Tích luỹ yaw liên tục ──────────────────────────────────────────────────
+float yaw = 0.0;  // độ, tích luỹ
 unsigned long lastYawUpdateUs = 0;
 
 void resetYawClock() {
@@ -235,7 +206,7 @@ void connectWifi() {
   WiFi.mode(WIFI_STA);
 
   if (!WiFi.config(ESP32_STATIC_IP, ESP32_GATEWAY, ESP32_SUBNET)) {
-    Serial.println("Cảnh báo: đặt IP tĩnh thất bại — sẽ dùng DHCP như cũ.");
+    Serial.println("Cảnh báo: đặt IP tĩnh thất bại.");
   }
 
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -254,12 +225,9 @@ void connectWifi() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Chiều 2 (ESP32 → Web): báo tiến độ từng bước + heartbeat định kỳ + báo cáo
-// hoàn thành. Mọi gói gửi đi đều đánh số packetIndex tăng dần, kèm millis()
-// và RSSI — Flask dùng để tính tỉ lệ mất gói + độ trễ + hiển thị chất lượng
-// Wi-Fi (xem _record_packet() trong esp32_control.py).
+// Chiều 2 (ESP32 → Web): báo tiến độ
 // ═══════════════════════════════════════════════════════════════════════════
-unsigned long packetIndex = 0;  // tăng dần ở MỌI gói gửi đi (heartbeat lẫn báo cáo tiến độ) — dùng phát hiện gói bị rớt
+unsigned long packetIndex = 0;
 
 String commonTelemetryJson() {
   return String("\"packet_index\":") + String(packetIndex) +
@@ -278,7 +246,7 @@ void reportProgress(int stepIndex, const char* status) {
   http.addHeader("Content-Type", "application/json");
 
   String payload = String("{\"step_index\":") + String(stepIndex) +
-                    ",\"status\":\"" + status + "\"," + commonTelemetryJson() + "}";
+                     ",\"status\":\"" + status + "\"," + commonTelemetryJson() + "}";
   int httpCode = http.POST(payload);
 
   if (httpCode <= 0) {
@@ -288,10 +256,6 @@ void reportProgress(int stepIndex, const char* status) {
   http.end();
 }
 
-// Báo cáo KẾT THÚC hành trình — gửi khi thực thi tới lệnh command="finish"
-// (luôn ở cuối chuỗi lệnh, do trajectory_converter.py tự thêm). Kèm tổng số
-// gói đã gửi (packetIndex tính TỚI THỜI ĐIỂM NÀY) để Flask so với số gói THỰC
-// SỰ nhận được, tính ra tỉ lệ mất gói trên đường truyền Wi-Fi.
 void reportFinish() {
   if (WiFi.status() != WL_CONNECTED) return;
   packetIndex++;
@@ -302,7 +266,7 @@ void reportFinish() {
   http.addHeader("Content-Type", "application/json");
 
   String payload = String("{\"status\":\"finish\",\"total_packets_sent\":") + String(packetIndex) +
-                    "," + commonTelemetryJson() + "}";
+                     "," + commonTelemetryJson() + "}";
   int httpCode = http.POST(payload);
 
   if (httpCode <= 0) {
@@ -314,8 +278,6 @@ void reportFinish() {
   http.end();
 }
 
-// Heartbeat định kỳ — báo còn sống + chất lượng Wi-Fi ngay cả khi ĐANG RẢNH
-// (chưa nhận chuỗi lệnh nào), để panel kết nối trên web luôn có dữ liệu mới.
 const unsigned long HEARTBEAT_INTERVAL_MS = 2000;
 unsigned long lastHeartbeatMs = 0;
 
@@ -340,20 +302,15 @@ void sendHeartbeatIfDue() {
     Serial.println("✓ Heartbeat đầu tiên đã gửi thành công tới Flask.");
   }
 
-  // Chỉ in ra khi CÓ LỖI — tránh spam Serial mỗi 2 giây lúc bình thường, nhưng
-  // vẫn thấy được ngay nếu heartbeat không tới được Flask (vd route chưa tồn
-  // tại vì Flask chưa nạp lại code mới — httpCode=404 — hoặc sai IP/cổng).
   if (httpCode != 200) {
-    Serial.print("Heartbeat lỗi (http code=");
-    Serial.print(httpCode);
-    Serial.print("): ");
+    Serial.print("Heartbeat lỗi: ");
     Serial.println(httpCode > 0 ? http.getString() : http.errorToString(httpCode));
   }
   http.end();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Hàng đợi lệnh + máy trạng thái thực thi (state machine, không dùng delay())
+// Hàng đợi lệnh + máy trạng thái thực thi
 // ═══════════════════════════════════════════════════════════════════════════
 #define MAX_COMMANDS 64
 
@@ -371,17 +328,11 @@ enum ExecState { EXEC_IDLE, EXEC_PAUSE_BEFORE, EXEC_RUNNING };
 ExecState execState = EXEC_IDLE;
 
 unsigned long commandStartMs = 0;
-float straightTargetYaw = 0.0;  // yaw tham chiếu (giữ nguyên hướng) cho lệnh "straight" hiện tại
-float turnStartYaw = 0.0;       // yaw lúc bắt đầu lệnh "turn" hiện tại, để tính đã quay được bao nhiêu
+float straightTargetYaw = 0.0;  // yaw tham chiếu cho lệnh "straight"
+float turnStartYaw = 0.0;       // yaw lúc bắt đầu lệnh "turn"
 
-// Dừng ngắn giữa các lệnh — khớp mô tả "đi thẳng N giây → dừng → quay → dừng..."
 const unsigned long INTER_COMMAND_PAUSE_MS = 400;
-
-// Hệ số P bù trôi khi đi thẳng — ĐƠN VỊ: (chênh lệch PWM) / (độ lệch yaw).
-// TINH CHỈNH THỰC NGHIỆM: bắt đầu với giá trị nhỏ (2-4), tăng dần nếu xe vẫn
-// lệch rõ; nếu xe lệch NGÀY CÀNG XA thay vì tự sửa lại — nghĩa là dấu bù đang
-// SAI CHIỀU — đảo dấu KP_STRAIGHT (đổi thành số âm) rồi thử lại.
-float KP_STRAIGHT = 3.0;
+float KP_STRAIGHT = -5.0;
 
 void finishCurrentCommand() {
   reportProgress(currentCommandIndex, "done");
@@ -407,9 +358,6 @@ void advanceCommandQueue() {
   commandStartMs = millis();
   resetYawClock();
 
-  // "finish" không phải bước di chuyển — không gọi reportProgress() theo
-  // step_index thường, để handleExecutionLoop() xử lý riêng (gửi báo cáo
-  // tổng kết qua reportFinish() ngay dưới).
   if (cmd.type == "finish") {
     execState = EXEC_RUNNING;
     return;
@@ -418,45 +366,60 @@ void advanceCommandQueue() {
   reportProgress(currentCommandIndex, "running");
 
   if (cmd.type == "straight") {
-    straightTargetYaw = yaw;  // giữ nguyên hướng hiện tại trong suốt đoạn thẳng này
+    straightTargetYaw = yaw;
   } else if (cmd.type == "turn") {
     turnStartYaw = yaw;
   }
   execState = EXEC_RUNNING;
 }
 
-// ── Đi thẳng: P-controller bù trôi yaw quanh straightTargetYaw ─────────────
+const bool ENABLE_STRAIGHT_CORRECTION = false;
+
 void runStraightStep() {
   updateYaw();
 
-  float error = yaw - straightTargetYaw;   // >0: đã lệch trái so với hướng ban đầu
+  if (!ENABLE_STRAIGHT_CORRECTION) {
+    setMotors(STRAIGHT_PWM, STRAIGHT_PWM);
+    return;
+  }
+
+  float error = yaw - straightTargetYaw;
   int correction = (int)(KP_STRAIGHT * error);
 
-  // Lệch trái (error>0) -> tăng PWM bánh trái, giảm PWM bánh phải -> xe tự
-  // xoay bù về phải. Nếu thực tế thấy NGƯỢC LẠI (xe lệch thêm), đảo dấu
-  // KP_STRAIGHT ở khai báo hằng số phía trên thay vì sửa ở đây.
   int leftPwm  = constrain(STRAIGHT_PWM + correction, -255, 255);
   int rightPwm = constrain(STRAIGHT_PWM - correction, -255, 255);
   setMotors(leftPwm, rightPwm);
 }
 
-// ── Quay 90° tại chỗ: PWM cố định BASE_PWM, không giảm tốc, dừng ngay khi đủ góc ──
+// ═══════════════════════════════════════════════════════════════════════════
+// THUẬT TOÁN QUAY: Cắt điện sớm để bù quán tính (trở về cách cũ)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Bù quán tính: Để giảm thời gian xoay (tránh quay lố), chúng ta ngắt điện 
+// TRƯỚC KHI đạt 90 độ. Đã tăng từ 8.0 lên 15.0 để xe dừng sớm hơn nữa.
+// Nếu xe vẫn quay QUÁ 90 độ -> Tăng số này lên (20.0, 25.0...)
+// Nếu xe quay CHƯA TỚI 90 độ -> Giảm số này xuống (10.0, 5.0...)
+float TURN_OVERSHOOT_COMPENSATION_DEG = 30.0;
+
 void runTurnStep() {
   updateYaw();
 
   Command &cmd = commandQueue[currentCommandIndex];
+  
   float turned = yaw - turnStartYaw;
+  float effectiveTarget = fabs((float)cmd.turnAngle) - TURN_OVERSHOOT_COMPENSATION_DEG;
+  
+  // Phòng trường hợp góc bù lớn hơn cả góc đích
+  if (effectiveTarget < 0) effectiveTarget = 0; 
 
-  if (fabs(turned) >= fabs((float)cmd.turnAngle)) {
+  // Nếu góc đã quay vượt quá hoặc bằng mức cắt điện -> dừng động cơ
+  if (fabs(turned) >= effectiveTarget) {
     stopMotors();
     finishCurrentCommand();
     return;
   }
 
-  // turn_angle > 0 = quay trái. Quy ước: quay trái = bánh trái LÙI, bánh phải
-  // TIẾN (xe xoay ngược chiều kim đồng hồ nhìn từ trên xuống). Nếu thực tế xe
-  // quay NGƯỢC HƯỚNG so với turn_angle yêu cầu, đảo dấu ở dòng "pwm = ..." bên
-  // dưới (đổi (cmd.turnAngle > 0) thành (cmd.turnAngle < 0)).
+  // Cấp xung cố định (BASE_PWM)
   int pwm = (cmd.turnAngle > 0) ? BASE_PWM : -BASE_PWM;
   setMotors(-pwm, pwm);
 }
@@ -497,7 +460,6 @@ void handleExecutionLoop() {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Chiều 1 (Web → ESP32): nhận chuỗi lệnh hình học
-// Body JSON: [ {"index":0,"command":"straight","time_ms":2000,"turn_angle":0}, ... ]
 // ═══════════════════════════════════════════════════════════════════════════
 void handleCommands() {
   if (server.method() != HTTP_POST) {
@@ -509,11 +471,9 @@ void handleCommands() {
   Serial.println("Nhận chuỗi lệnh mới:");
   Serial.println(body);
 
-  // Trả lời ngay cho Web biết đã nhận — không chờ chạy xong cả hành trình
-  // mới trả response (đúng thiết kế Chiều 1: Web gửi 1 lần, không chờ).
   server.send(200, "application/json", "{\"ok\":true}");
 
-  JsonDocument doc;  // ArduinoJson v7 — nếu bạn dùng v6, đổi thành DynamicJsonDocument doc(4096);
+  JsonDocument doc; 
   DeserializationError err = deserializeJson(doc, body);
   if (err) {
     Serial.print("Lỗi parse JSON: ");
@@ -543,9 +503,6 @@ void handleCommands() {
   advanceCommandQueue();
 }
 
-// ── Chẩn đoán: in ra lý do lần reset/khởi động gần nhất — gọi ĐẦU TIÊN trong
-// setup(), trước cả Serial.begin() thật sự ổn định, để biết chắc có phải
-// brownout (sụt áp) hay không thay vì đoán qua log boot lộn xộn.
 void printResetReason() {
   esp_reset_reason_t reason = esp_reset_reason();
   Serial.print("Lý do khởi động/reset lần trước: ");
@@ -565,7 +522,7 @@ void printResetReason() {
 // ═══════════════════════════════════════════════════════════════════════════
 void setup() {
   Serial.begin(115200);
-  delay(200);  // cho Serial ổn định trước khi in dòng chẩn đoán đầu tiên
+  delay(200); 
   printResetReason();
 
   pinMode(LED_PIN, OUTPUT);
